@@ -10,14 +10,14 @@
  *
  * Usage:
  *   node ddos-flood.js                                   ← hits Render
- *   node ddos-flood.js https://zynapp-kuuz.onrender.com
+ *   node ddos-flood.js https://zynchat-kuuz.onrender.com
  *   node ddos-flood.js http://localhost:3000  100        ← 100 requests
  */
 
 const https  = require('https');
 const http   = require('http');
 
-const TARGET = process.argv[2] || 'https://zynapp-kuuz.onrender.com';
+const TARGET = process.argv[2] || 'https://zynchat-kuuz.onrender.com';
 const COUNT  = parseInt(process.argv[3]) || 50;
 
 const url  = new URL('/api/login', TARGET);

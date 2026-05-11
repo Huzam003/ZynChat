@@ -1,14 +1,14 @@
 /**
- * ZynApp — Database Layer (sql.js — pure JS SQLite)
+ * ZynChat — Database Layer (sql.js — pure JS SQLite)
  * No native compilation required.
- * Persists to zynapp.db on disk after every write batch.
+ * Persists to zynchat.db on disk after every write batch.
  */
 
 const initSqlJs = require('sql.js');
 const path      = require('path');
 const fs        = require('fs');
 
-const DB_PATH = path.join(__dirname, 'zynapp.db');
+const DB_PATH = path.join(__dirname, 'zynchat.db');
 
 let db; // sql.js Database instance
 
@@ -161,14 +161,14 @@ async function initDB() {
              [roomId, userId, username, color, text]);
 
     // General
-    insMsg(genRoom.id, adminUser.id, 'admin', adminUser.avatar_color, '👋 Welcome to ZynApp! Your new enterprise messaging platform. Feel free to explore all the channels.');
+    insMsg(genRoom.id, adminUser.id, 'admin', adminUser.avatar_color, '👋 Welcome to ZynChat! Your new enterprise messaging platform. Feel free to explore all the channels.');
     insMsg(genRoom.id, alice.id,     'alice', alice.avatar_color,     'Thanks @admin! The new interface looks amazing. Really clean UI.');
     insMsg(genRoom.id, bob.id,       'bob',   bob.avatar_color,       'Agreed. Loving the dark theme. Has anyone checked out #tech-talk yet?');
     insMsg(genRoom.id, alice.id,     'alice', alice.avatar_color,     "Yeah! There's already a thread about the new auth system. Go check it out.");
     insMsg(genRoom.id, adminUser.id, 'admin', adminUser.avatar_color, "Don't forget to check #announcements for the Q1 security report 🔒");
 
     // Announcements
-    insMsg(annRoom.id, adminUser.id, 'admin', adminUser.avatar_color, '📢 ZynApp v2.0 is now LIVE! New features: rooms, user profiles, file sharing & real-time typing indicators. Report bugs to #general.');
+    insMsg(annRoom.id, adminUser.id, 'admin', adminUser.avatar_color, '📢 ZynChat v2.0 is now LIVE! New features: rooms, user profiles, file sharing & real-time typing indicators. Report bugs to #general.');
     insMsg(annRoom.id, adminUser.id, 'admin', adminUser.avatar_color, '🔒 SECURITY NOTICE: All staff must update passwords before Friday. Contact IT if needed.');
 
     // Tech Talk
@@ -181,7 +181,7 @@ async function initDB() {
   }
 
   saveDB();
-  console.log('[DB] ZynApp database ready ✅');
+  console.log('[DB] ZynChat database ready ✅');
 }
 
 function getDB()      { return db; }

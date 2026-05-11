@@ -1,12 +1,12 @@
 /**
- * ZynApp — Client Configuration
+ * ZynChat — Client Configuration
  * Handles API and Socket URL management for both web and native platforms.
  * On native (Capacitor), defaults to the deployed Render server.
  */
 
 const ZynConfig = {
   // Key for storing the server URL in localStorage
-  STORAGE_KEY: 'zynapp_server_url',
+  STORAGE_KEY: 'zynchat_server_url',
 
   // Default cloud server URL (Render deployment)
   DEFAULT_SERVER: 'https://nexachat-kuuz.onrender.com',
@@ -106,7 +106,7 @@ window._originalFetch = window.fetch.bind(window);
   if (!ZynConfig.isNative()) return;
 
   // Skip if already granted — prevents loop between index.html ↔ chat.html
-  if (localStorage.getItem('zynapp_permission_granted') === 'true') return;
+  if (localStorage.getItem('zynchat_permission_granted') === 'true') return;
 
   function createPermissionOverlay() {
     const overlay = document.createElement('div');
@@ -220,9 +220,9 @@ window._originalFetch = window.fetch.bind(window);
 
       <div class="perm-card">
         <div class="perm-icon">🔐</div>
-        <div class="perm-title">ZynApp Needs Access</div>
+        <div class="perm-title">ZynChat Needs Access</div>
         <div class="perm-desc">
-          To connect you with your team, ZynApp requires the following permissions:
+          To connect you with your team, ZynChat requires the following permissions:
         </div>
         <div class="perm-list">
           <div class="perm-item">
@@ -291,11 +291,11 @@ window._originalFetch = window.fetch.bind(window);
 
         btn.classList.remove('checking');
         btn.classList.add('success');
-        btn.innerHTML = '✓ Connected to ' + (data.app || 'ZynApp') + '!';
+        btn.innerHTML = '✓ Connected to ' + (data.app || 'ZynChat') + '!';
         status.textContent = 'Server: ' + baseUrl + ' — v' + (data.version || '?');
 
         // Save permission grant — won't show popup again
-        localStorage.setItem('zynapp_permission_granted', 'true');
+        localStorage.setItem('zynchat_permission_granted', 'true');
 
         // Fade out and remove overlay
         setTimeout(() => {

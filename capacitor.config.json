@@ -1,6 +1,6 @@
 {
-  "appId": "com.zynapp.app",
-  "appName": "ZynApp",
+  "appId": "com.zynchat.app",
+  "appName": "ZynChat",
   "webDir": "public",
   "android": {
     "allowMixedContent": true,

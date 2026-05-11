@@ -1,7 +1,7 @@
 {
-  "name": "zynapp",
+  "name": "zynchat",
   "version": "2.0.0",
-  "description": "ZynApp — Enterprise Messaging Platform",
+  "description": "ZynChat — Enterprise Messaging Platform",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -22,8 +22,8 @@
     "electron-builder": "^26.8.1"
   },
   "build": {
-    "appId": "com.zynapp.app",
-    "productName": "ZynApp",
+    "appId": "com.zynchat.app",
+    "productName": "ZynChat",
     "directories": {
       "output": "dist"
     },

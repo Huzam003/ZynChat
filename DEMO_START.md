@@ -1,15 +1,15 @@
-# ZynApp + ShieldWatch — Demo Setup Guide
+# ZynChat + ShieldWatch — Demo Setup Guide
 
 ## Overview
 
-ZynApp runs on Render.com (cloud, public URL).
+ZynChat runs on Render.com (cloud, public URL).
 ShieldWatch runs on YOUR laptop.
 ngrok connects them.
 
 ```
 [Anyone's Browser]
        ↓
-[ZynApp on Render]  ← public internet
+[ZynChat on Render]  ← public internet
        ↓  (sends attack events through ngrok)
 [ngrok tunnel]
        ↓
@@ -22,23 +22,23 @@ ngrok connects them.
 
 ## ONE-TIME SETUP (do this before demo day)
 
-### Step 1 — Deploy ZynApp to Render
+### Step 1 — Deploy ZynChat to Render
 
-1. Go to https://github.com and create a new repository called `zynapp`
+1. Go to https://github.com and create a new repository called `zynchat`
 2. Open Terminal and run:
    ```bash
-   cd ~/Desktop/ZynApp
+   cd ~/Desktop/ZynChat
    git init
    git add .
-   git commit -m "ZynApp initial deploy"
-   git remote add origin https://github.com/YOUR_USERNAME/zynapp.git
+   git commit -m "ZynChat initial deploy"
+   git remote add origin https://github.com/YOUR_USERNAME/zynchat.git
    git push -u origin main
    ```
 3. Go to https://render.com → Sign up free → New Web Service
-4. Connect your GitHub repo `zynapp`
+4. Connect your GitHub repo `zynchat`
 5. Render auto-detects the settings from render.yaml
 6. Click **Deploy** — wait ~3 minutes
-7. You get a URL like: `https://zynapp-kuuz.onrender.com`
+7. You get a URL like: `https://zynchat-kuuz.onrender.com`
 
 ### Step 2 — Install ngrok (free)
 
@@ -72,7 +72,7 @@ ngrok connects them.
    ```
    Copy the part AFTER https:// → `abc123.ngrok-free.app`
 
-4. Go to Render dashboard → Your zynapp service → Environment
+4. Go to Render dashboard → Your zynchat service → Environment
 5. Set `SW_CEREBRO_ADDR` = `abc123.ngrok-free.app`
 6. Click **Save Changes** → Render redeploys automatically (~1 min)
 
@@ -96,9 +96,9 @@ ngrok http 3002
 http://localhost:3002
 ```
 
-### Browser 2 — ZynApp (the target — share this URL with class):
+### Browser 2 — ZynChat (the target — share this URL with class):
 ```
-https://zynapp-kuuz.onrender.com
+https://zynchat-kuuz.onrender.com
 ```
 
 ---
@@ -106,7 +106,7 @@ https://zynapp-kuuz.onrender.com
 ## DEMO ATTACKS (perform these live)
 
 ### Attack 1 — SQL Injection (bypasses login)
-1. Go to ZynApp login page
+1. Go to ZynChat login page
 2. Username: `admin'--`
 3. Password: anything (e.g. `wrong`)
 4. Click Sign In → ShieldWatch BLOCKS it
@@ -141,7 +141,7 @@ https://zynapp-kuuz.onrender.com
 ### Attack 5 — DDoS Flood (login endpoint)
 1. Open Terminal and run:
    ```bash
-   cd ~/Desktop/ZynApp
+   cd ~/Desktop/ZynChat
    node ddos-flood.js
    ```
 2. Sends 50 parallel requests to `/api/login`
@@ -152,10 +152,10 @@ https://zynapp-kuuz.onrender.com
 **Pro tip**: Run it twice with ShieldWatch ON — second run is blocked from the very first request!
 
 ### Attack 6 — CSRF (profile hijack)
-1. Log into ZynApp as **alice**
+1. Log into ZynChat as **alice**
 2. In the SAME browser, open a new tab and go to:
    ```
-   https://zynapp-kuuz.onrender.com/csrf-attack.html
+   https://zynchat-kuuz.onrender.com/csrf-attack.html
    ```
 3. Click **"Claim My Reward"** button
 4. **Without ShieldWatch**: Alice's bio changes to "HACKED via CSRF" — silently!
@@ -204,7 +204,7 @@ https://zynapp-kuuz.onrender.com
 ### Attack 10 — Brute Force (password cracking)
 1. Open Terminal and run:
    ```bash
-   cd ~/Desktop/ZynApp
+   cd ~/Desktop/ZynChat
    node brute-force.js
    ```
 2. Tries 30 common passwords against admin account (150ms between attempts)
@@ -244,7 +244,7 @@ When an attack happens the dashboard shows:
 
 | Problem | Fix |
 |---------|-----|
-| ZynApp not loading | Check Render dashboard — may be sleeping (free tier sleeps after 15 min inactivity, first load takes ~30 sec) |
+| ZynChat not loading | Check Render dashboard — may be sleeping (free tier sleeps after 15 min inactivity, first load takes ~30 sec) |
 | Dashboard not receiving events | Check ngrok is running. Check SW_CEREBRO_ADDR on Render matches ngrok URL |
 | ngrok URL changed | ngrok gives new URL every restart. Update SW_CEREBRO_ADDR on Render each time |
 | ShieldWatch not showing fingerprint | Wait 3 seconds after page load — beacon runs with a delay |

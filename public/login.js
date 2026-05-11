@@ -1,4 +1,4 @@
-/* ─── ZynApp Login Page Logic ────────────────────────────────────────────── */
+/* ─── ZynChat Login Page Logic ────────────────────────────────────────────── */
 
 // ─── Animated canvas background ───────────────────────────────────────────────
 (function initCanvas() {

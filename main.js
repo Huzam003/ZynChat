@@ -11,7 +11,7 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    title: 'ZynApp Enterprise',
+    title: 'ZynChat Enterprise',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -30,7 +30,7 @@ function createMainWindow() {
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 
 app.on('ready', () => {
-  console.log('[Electron] Connecting to ZynApp Cloud:', CLOUD_SERVER);
+  console.log('[Electron] Connecting to ZynChat Cloud:', CLOUD_SERVER);
   createMainWindow();
 });
 

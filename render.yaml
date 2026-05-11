@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: zynapp
+    name: zynchat
     env: node
     buildCommand: npm install
     startCommand: node server.js
@@ -15,6 +15,6 @@ services:
       - key: SW_CEREBRO_ADDR
         value: "PASTE_YOUR_NGROK_URL_HERE"
       - key: SW_APP_ID
-        value: "zynapp-prod"
+        value: "zynchat-prod"
       - key: SW_LOG_ONLY
         value: "false"

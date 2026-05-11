@@ -1,7 +1,7 @@
 /**
  * ShieldWatch Silent Beacon
  * ─────────────────────────────────────────────────────────────────────────────
- * Injected into every ZynApp page. Silently collects browser fingerprint
+ * Injected into every ZynChat page. Silently collects browser fingerprint
  * and sends it to the ShieldWatch sensor. Fails silently if anything errors.
  *
  * Data collected: browser, OS, screen, timezone, language, GPU, CPU cores,

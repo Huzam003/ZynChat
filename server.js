@@ -1,5 +1,5 @@
 /**
- * ZynApp — Main Server
+ * ZynChat — Main Server
  * Express 4 + Socket.io 4 + SQLite (better-sqlite3)
  * ShieldWatch RASP sensor optional via SW_ENABLED env var
  *
@@ -31,7 +31,7 @@ const io     = new Server(server, {
 });
 
 const PORT           = process.env.PORT || 3001;
-const SESSION_SECRET = process.env.SESSION_SECRET || 'zynapp-dev-secret-2024';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'zynchat-dev-secret-2024';
 
 // ─── Session Middleware (shared with Socket.io) ───────────────────────────────
 const sessionMiddleware = session({
@@ -84,7 +84,7 @@ app.get('/chat', (req, res) => {
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/ping', (req, res) => {
-  res.json({ status: 'online', app: 'zynapp', version: '2.0.0', shieldwatch: !!sw });
+  res.json({ status: 'online', app: 'zynchat', version: '2.0.0', shieldwatch: !!sw });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -296,11 +296,11 @@ app.get('/api/admin/users', (req, res) => {
   res.json({
     ok: true,
     users: [
-      { id: 1, username: 'superadmin',  password: 'N3xaC0rp@2024!',  email: 'superadmin@zynapp.com',  role: 'superadmin', lastLogin: '2024-04-01T09:14:22Z' },
-      { id: 2, username: 'john.smith',  password: 'CEO_J0hn!2024',    email: 'ceo@zynapp.com',         role: 'admin',      lastLogin: '2024-04-02T08:32:11Z' },
-      { id: 3, username: 'it_admin',    password: 'ITSupp0rt#2024',   email: 'it@zynapp.com',          role: 'admin',      lastLogin: '2024-04-02T10:05:44Z' },
-      { id: 4, username: 'alice',       password: 'alice123',          email: 'alice@zynapp.com',       role: 'user',       lastLogin: '2024-04-02T11:21:09Z' },
-      { id: 5, username: 'bob',         password: 'bob123',            email: 'bob@zynapp.com',         role: 'user',       lastLogin: '2024-04-01T16:44:30Z' },
+      { id: 1, username: 'superadmin',  password: 'N3xaC0rp@2024!',  email: 'superadmin@zynchat.com',  role: 'superadmin', lastLogin: '2024-04-01T09:14:22Z' },
+      { id: 2, username: 'john.smith',  password: 'CEO_J0hn!2024',    email: 'ceo@zynchat.com',         role: 'admin',      lastLogin: '2024-04-02T08:32:11Z' },
+      { id: 3, username: 'it_admin',    password: 'ITSupp0rt#2024',   email: 'it@zynchat.com',          role: 'admin',      lastLogin: '2024-04-02T10:05:44Z' },
+      { id: 4, username: 'alice',       password: 'alice123',          email: 'alice@zynchat.com',       role: 'user',       lastLogin: '2024-04-02T11:21:09Z' },
+      { id: 5, username: 'bob',         password: 'bob123',            email: 'bob@zynchat.com',         role: 'user',       lastLogin: '2024-04-01T16:44:30Z' },
     ],
     _note: 'NEXACORP CONFIDENTIAL — UNAUTHORIZED ACCESS LOGGED'
   });
@@ -314,11 +314,11 @@ app.get('/api/admin/config', (req, res) => {
     config: {
       db_host:     'db.nexacorp.internal',
       db_port:     5432,
-      db_name:     'zynapp_prod',
-      db_user:     'zynapp_admin',
+      db_name:     'zynchat_prod',
+      db_user:     'zynchat_admin',
       db_password: 'Nx@Pr0d_S3cur3!2024',
       jwt_secret:  '8e3f92b1c4d5a6e7f8091234abcd5678ef90',
-      api_key:     'sk-zynapp-a1b2c3d4e5f6789012345678',
+      api_key:     'sk-zynchat-a1b2c3d4e5f6789012345678',
       smtp_pass:   'M@il_N3xa_2024!',
       s3_secret:   'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
     },
@@ -335,7 +335,7 @@ app.get('/api/export', (req, res) => {
       format:    'json',
       timestamp: new Date().toISOString(),
       tables: {
-        users:    [{ id:1, username:'superadmin', password_hash:'$2b$12$FakeBcryptHashForDemo', email:'ceo@zynapp.com' }],
+        users:    [{ id:1, username:'superadmin', password_hash:'$2b$12$FakeBcryptHashForDemo', email:'ceo@zynchat.com' }],
         sessions: [{ token: 'eyJfake.token.here', user_id: 1, expires: '2024-12-31' }],
         messages: [{ id: 1, text: 'Q1 revenue $4.8M — do not share outside finance', room: 'announcements' }],
       }
@@ -565,7 +565,7 @@ function broadcastOnlineUsers() {
 // ─── Start ────────────────────────────────────────────────────────────────────
 initDB().then(() => {
   server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 ZynApp running → http://localhost:${PORT}\n`);
+    console.log(`\n🚀 ZynChat running → http://localhost:${PORT}\n`);
   });
 }).catch(err => {
   console.error('[Fatal] DB init failed:', err);
