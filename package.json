@@ -4,8 +4,8 @@
   "description": "ZynChat — Enterprise Messaging Platform",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron .",
+    "start": "node server.js",
+    "desktop": "electron .",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux AppImage"
   },
