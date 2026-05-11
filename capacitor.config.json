@@ -1,0 +1,20 @@
+{
+  "appId": "com.nexachat.app",
+  "appName": "NexaChat",
+  "webDir": "public",
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  },
+  "server": {
+    "allowNavigation": ["nexachat-aj89.onrender.com", "*.onrender.com", "*"],
+    "cleartext": true,
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}
