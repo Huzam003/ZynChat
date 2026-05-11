@@ -3,7 +3,7 @@ const path = require('path');
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 // All platforms connect to the same cloud server for sync
-const CLOUD_SERVER = 'https://nexachat-aj89.onrender.com';
+const CLOUD_SERVER = 'https://nexachat-kuuz.onrender.com/chat';
 
 let mainWindow;
 
@@ -11,7 +11,7 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    title: 'NexaChat Enterprise',
+    title: 'ZynApp Enterprise',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -30,7 +30,7 @@ function createMainWindow() {
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 
 app.on('ready', () => {
-  console.log('[Electron] Connecting to NexaChat Cloud:', CLOUD_SERVER);
+  console.log('[Electron] Connecting to ZynApp Cloud:', CLOUD_SERVER);
   createMainWindow();
 });
 

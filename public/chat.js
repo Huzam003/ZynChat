@@ -1,4 +1,4 @@
-/* ─── NexaChat — Chat Interface ─────────────────────────────────────────────
+/* ─── ZynApp — Chat Interface ─────────────────────────────────────────────
  *
  * ⚠️  INTENTIONAL VULNERABILITIES (for ShieldWatch demo):
  *
@@ -151,7 +151,7 @@ async function joinRoom(room) {
   channelIcon.textContent  = room.icon || '💬';
   welcomeRoom.textContent  = room.name;
   msgInput.placeholder     = `Message #${room.name}`;
-  document.title           = `#${room.name} — NexaChat`;
+  document.title           = `#${room.name} — ZynApp`;
 
   // Clear messages & typing
   msgsList.innerHTML = '';

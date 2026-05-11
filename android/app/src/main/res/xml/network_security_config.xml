@@ -6,7 +6,7 @@
         </trust-anchors>
     </base-config>
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">nexachat-aj89.onrender.com</domain>
+        <domain includeSubdomains="true">nexachat-kuuz.onrender.com</domain>
         <domain includeSubdomains="true">onrender.com</domain>
         <domain includeSubdomains="true">10.0.2.2</domain>
         <domain includeSubdomains="true">localhost</domain>

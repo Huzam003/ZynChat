@@ -1,15 +1,15 @@
 /**
- * NexaChat — Client Configuration
+ * ZynApp — Client Configuration
  * Handles API and Socket URL management for both web and native platforms.
  * On native (Capacitor), defaults to the deployed Render server.
  */
 
-const NexaConfig = {
+const ZynConfig = {
   // Key for storing the server URL in localStorage
-  STORAGE_KEY: 'nexachat_server_url',
+  STORAGE_KEY: 'zynapp_server_url',
 
   // Default cloud server URL (Render deployment)
-  DEFAULT_SERVER: 'https://nexachat-aj89.onrender.com',
+  DEFAULT_SERVER: 'https://nexachat-kuuz.onrender.com',
 
   /**
    * Detects if we're running inside a native shell (Capacitor or Electron)
@@ -74,7 +74,7 @@ const NexaConfig = {
   }
 };
 
-window.NexaConfig = NexaConfig;
+window.ZynConfig = ZynConfig;
 
 // ─── Global fetch override ──────────────────────────────────────────────────
 // Save original fetch BEFORE wrapping (used by permission dialog)
@@ -85,7 +85,7 @@ window._originalFetch = window.fetch.bind(window);
 
   window.fetch = function(url, options) {
     if (typeof url === 'string') {
-      const base = NexaConfig.getBaseUrl();
+      const base = ZynConfig.getBaseUrl();
       // If the URL is relative (starts with / or doesn't start with http)
       if (base && !url.startsWith('http') && !url.startsWith('blob:') && !url.startsWith('data:')) {
         url = base + (url.startsWith('/') ? url : '/' + url);
@@ -103,10 +103,10 @@ window._originalFetch = window.fetch.bind(window);
 // ─── Permission & Connectivity Check on Launch ────────────────────────────────
 // Shows a permission/connectivity popup ONCE when app launches on native
 (function() {
-  if (!NexaConfig.isNative()) return;
+  if (!ZynConfig.isNative()) return;
 
   // Skip if already granted — prevents loop between index.html ↔ chat.html
-  if (localStorage.getItem('nexachat_permission_granted') === 'true') return;
+  if (localStorage.getItem('zynapp_permission_granted') === 'true') return;
 
   function createPermissionOverlay() {
     const overlay = document.createElement('div');
@@ -220,9 +220,9 @@ window._originalFetch = window.fetch.bind(window);
 
       <div class="perm-card">
         <div class="perm-icon">🔐</div>
-        <div class="perm-title">NexaChat Needs Access</div>
+        <div class="perm-title">ZynApp Needs Access</div>
         <div class="perm-desc">
-          To connect you with your team, NexaChat requires the following permissions:
+          To connect you with your team, ZynApp requires the following permissions:
         </div>
         <div class="perm-list">
           <div class="perm-item">
@@ -267,7 +267,7 @@ window._originalFetch = window.fetch.bind(window);
       btn.innerHTML = '<span class="perm-spinner"></span> Connecting...';
       status.textContent = 'Waking up server (may take 30s on first load)...';
 
-      const baseUrl = NexaConfig.getBaseUrl();
+      const baseUrl = ZynConfig.getBaseUrl();
 
       try {
         // Use XMLHttpRequest to bypass CORS entirely on native
@@ -291,11 +291,11 @@ window._originalFetch = window.fetch.bind(window);
 
         btn.classList.remove('checking');
         btn.classList.add('success');
-        btn.innerHTML = '✓ Connected to ' + (data.app || 'NexaChat') + '!';
+        btn.innerHTML = '✓ Connected to ' + (data.app || 'ZynApp') + '!';
         status.textContent = 'Server: ' + baseUrl + ' — v' + (data.version || '?');
 
         // Save permission grant — won't show popup again
-        localStorage.setItem('nexachat_permission_granted', 'true');
+        localStorage.setItem('zynapp_permission_granted', 'true');
 
         // Fade out and remove overlay
         setTimeout(() => {

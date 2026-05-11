@@ -1,12 +1,12 @@
 /**
- * ShieldWatch RASP Sensor — NexaChat Integration v2
+ * ShieldWatch RASP Sensor — ZynApp Integration v2
  * ─────────────────────────────────────────────────────────────────────────────
  * Environment variables:
  *
  *   SW_ENABLED=true
  *   SW_CEREBRO_ADDR=abc123.ngrok-free.app     ← ngrok HTTP tunnel (no port)
  *                OR localhost:3002             ← local testing
- *   SW_APP_ID=nexachat
+ *   SW_APP_ID=zynapp
  *   SW_LOG_ONLY=false   (true = detect but never block — passive mode)
  *
  * ─────────────────────────────────────────────────────────────────────────────
@@ -17,7 +17,7 @@ const https  = require('https');
 const crypto = require('crypto');
 
 const RAW_ADDR  = process.env.SW_CEREBRO_ADDR || 'localhost:3002';
-const APP_ID    = process.env.SW_APP_ID       || 'nexachat';
+const APP_ID    = process.env.SW_APP_ID       || 'zynapp';
 const LOG_ONLY  = process.env.SW_LOG_ONLY === 'true';
 
 // ─── Parse the collector address ──────────────────────────────────────────────
@@ -301,7 +301,7 @@ function scanRequest(req) {
 }
 
 // ─── Send to ShieldWatch Collector ───────────────────────────────────────────
-// Non-blocking, fail-open — if ShieldWatch is down NexaChat keeps running
+// Non-blocking, fail-open — if ShieldWatch is down ZynApp keeps running
 function report(endpoint, payload) {
   const body    = JSON.stringify(payload);
   const module_ = COLLECTOR.useHttps ? https : http;

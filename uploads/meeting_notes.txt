@@ -4,7 +4,7 @@ Date: 2024-03-28  |  Attendees: 14  |  Facilitator: @admin
 
 Agenda
 ------
-  1. NexaChat v2.0 post-launch retrospective
+  1. ZynApp v2.0 post-launch retrospective
   2. Q2 roadmap review
   3. Security findings from internal review
   4. AOB
@@ -17,7 +17,7 @@ Notes
 [Item 2] Q2 roadmap approved. File-sharing module gets a complete rewrite.
          New encryption layer for messages in transit planned for Q2 end.
 
-[Item 3] Internal security team flagged two issues in NexaChat:
+[Item 3] Internal security team flagged two issues in ZynApp:
          - Login endpoint: no input sanitisation (ticket #NC-118, OPEN)
          - Search feature: potential XSS via reflected query (ticket #NC-119, OPEN)
          Both tickets assigned to Bob. ETA: sprint 6.

@@ -3,7 +3,7 @@
  * ║         ShieldWatch — Brute Force Demo Script                ║
  * ╠══════════════════════════════════════════════════════════════╣
  * ║  Tries a wordlist of common passwords against the admin      ║
- * ║  account on NexaChat's login endpoint.                       ║
+ * ║  account on ZynApp's login endpoint.                       ║
  * ║                                                              ║
  * ║  Phase 1 (SW OFF):  All attempts go through until found      ║
  * ║  Phase 2 (SW ON):   ShieldWatch blocks after 5 failures      ║
@@ -11,13 +11,13 @@
  *
  * Usage:
  *   node brute-force.js
- *   node brute-force.js https://nexachat-aj89.onrender.com admin
+ *   node brute-force.js https://zynapp-kuuz.onrender.com admin
  */
 
 const https = require('https');
 const http  = require('http');
 
-const TARGET   = process.argv[2] || 'https://nexachat-aj89.onrender.com';
+const TARGET   = process.argv[2] || 'https://zynapp-kuuz.onrender.com';
 const USERNAME = process.argv[3] || 'admin';
 
 // Common password wordlist (rockyou-style top passwords)
@@ -26,7 +26,7 @@ const PASSWORDS = [
   'welcome', '111111', 'monkey', 'dragon', 'master',
   '123456789', 'abc123', 'iloveyou', 'sunshine', 'princess',
   'password1', 'superman', '1234567', 'trustno1', 'pass@word',
-  'Admin123', 'nexachat', 'nexacorp', 'admin@123', 'P@ssw0rd',
+  'Admin123', 'zynapp', 'nexacorp', 'admin@123', 'P@ssw0rd',
   'admin123',          // ← correct password is here (position 26)
   'secret', 'hack3r', 'root123', 'test1234',
 ];

@@ -1,4 +1,4 @@
-/* ─── NexaChat Login Page Logic ────────────────────────────────────────────── */
+/* ─── ZynApp Login Page Logic ────────────────────────────────────────────── */
 
 // ─── Animated canvas background ───────────────────────────────────────────────
 (function initCanvas() {

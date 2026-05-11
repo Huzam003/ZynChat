@@ -1,4 +1,4 @@
-NexaCorp — Q1 2024 Financial Summary
+ZynApp — Q1 2024 Financial Summary
 =====================================
 CONFIDENTIAL — Internal Use Only
 
@@ -18,7 +18,7 @@ Department Breakdown
 
 Key Milestones
 --------------
-  ✓ NexaChat v2.0 shipped to all 1,200 employees
+  ✓ ZynApp v2.0 shipped to all 1,200 employees
   ✓ SOC 2 Type II audit passed (March 14)
   ✓ EU data residency compliance completed
   ✗ Mobile app launch delayed to Q2
@@ -31,7 +31,7 @@ Security Incidents
 
 Next Steps (Q2 Priorities)
 ---------------------------
-  1. Launch NexaChat mobile (iOS + Android)
+  1. Launch ZynApp mobile (iOS + Android)
   2. Penetration test by external firm — SCHEDULED
   3. Migrate legacy auth system to OAuth2
 

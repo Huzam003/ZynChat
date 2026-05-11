@@ -1,6 +1,6 @@
 {
-  "appId": "com.nexachat.app",
-  "appName": "NexaChat",
+  "appId": "com.zynapp.app",
+  "appName": "ZynApp",
   "webDir": "public",
   "android": {
     "allowMixedContent": true,
@@ -8,7 +8,8 @@
     "webContentsDebuggingEnabled": true
   },
   "server": {
-    "allowNavigation": ["nexachat-aj89.onrender.com", "*.onrender.com", "*"],
+    "url": "https://nexachat-kuuz.onrender.com/chat",
+    "allowNavigation": ["nexachat-kuuz.onrender.com", "*.onrender.com", "*"],
     "cleartext": true,
     "androidScheme": "https"
   },

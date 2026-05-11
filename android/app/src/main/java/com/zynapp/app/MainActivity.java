@@ -1,4 +1,4 @@
-package com.nexachat.app;
+package com.zynapp.app;
 
 import com.getcapacitor.BridgeActivity;
 

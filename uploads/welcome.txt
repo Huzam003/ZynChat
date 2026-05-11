@@ -1,9 +1,9 @@
-Welcome to NexaChat v2.0
+Welcome to ZynApp v2.0
 ========================
 
 Hello Team,
 
-We are thrilled to announce the official launch of NexaChat — our new enterprise
+We are thrilled to announce the official launch of ZynApp — our new enterprise
 messaging platform built for speed, collaboration, and security.
 
 Key Features:
@@ -20,6 +20,6 @@ Getting Started:
 
 If you experience any issues, contact the IT helpdesk at helpdesk@nexacorp.internal
 
-— The NexaChat Team
-  NexaCorp Internal Communications
+— The ZynApp Team
+  ZynApp Internal Communications
   Last updated: 2024-Q1

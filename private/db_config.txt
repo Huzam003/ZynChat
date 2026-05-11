@@ -1,17 +1,17 @@
-NexaChat — Production Database Configuration
+ZynApp — Production Database Configuration
 =============================================
 ** TOP SECRET — DO NOT SHARE **
 ** This file should NOT be accessible via the web server **
 
 [database]
 engine   = sqlite
-path     = /var/app/nexachat.db
+path     = /var/app/zynapp.db
 wal_mode = true
 
 [credentials]
-db_user     = nexachat_admin
+db_user     = zynapp_admin
 db_password = Nx@Pr0d_S3cur3!2024
-api_key     = sk-nexachat-a1b2c3d4e5f6789012345678
+api_key     = sk-zynapp-a1b2c3d4e5f6789012345678
 secret_key  = 8e3f92b1c4d5a6e7f8091234abcd5678ef90
 
 [backup]
