@@ -46,6 +46,7 @@ function fetchBlocklist() {
     port:     COLLECTOR.port,
     path:     '/api/blocked',
     method:   'GET',
+    headers:  { 'ngrok-skip-browser-warning': 'true' },
     timeout:  4000,
   };
   const req = module_.request(options, res => {
@@ -79,6 +80,7 @@ function fetchFingerprintBlocklist() {
     port:     COLLECTOR.port,
     path:     '/api/blocked-fp',
     method:   'GET',
+    headers:  { 'ngrok-skip-browser-warning': 'true' },
     timeout:  4000,
   };
   const req = module_.request(options, res => {
@@ -314,6 +316,7 @@ function report(endpoint, payload) {
     headers:  {
       'Content-Type':   'application/json',
       'Content-Length': Buffer.byteLength(body),
+      'ngrok-skip-browser-warning': 'true'
     },
     timeout: 4000,
   };
