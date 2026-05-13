@@ -293,16 +293,35 @@ function detectThreats(value) {
 
 // ─── Scan request inputs ──────────────────────────────────────────────────────
 function scanRequest(req) {
-  const vals = [
-    ...Object.values(req.query  || {}),
-    ...Object.values(req.body   || {}),
-    ...Object.values(req.params || {}),
-  ].filter(v => typeof v === 'string');
-
-  for (const val of vals) {
+  const sensitiveKeys = ['password', 'pass', 'pwd', 'secret', 'token', 'apiKey', 'credential'];
+  
+  // Scan query params
+  for (const [key, val] of Object.entries(req.query || {})) {
+    if (typeof val !== 'string') continue;
     const t = detectThreats(val);
     if (t) return t;
   }
+
+  // Scan body (with masking for sensitive fields)
+  for (const [key, val] of Object.entries(req.body || {})) {
+    if (typeof val !== 'string') continue;
+    const t = detectThreats(val);
+    if (t) {
+      const lowerKey = key.toLowerCase();
+      if (sensitiveKeys.some(sk => lowerKey.includes(sk))) {
+        t.raw = '[REDACTED]'; // Hide the actual password/token
+      }
+      return t;
+    }
+  }
+
+  // Scan URL params
+  for (const [key, val] of Object.entries(req.params || {})) {
+    if (typeof val !== 'string') continue;
+    const t = detectThreats(val);
+    if (t) return t;
+  }
+  
   return null;
 }
 
@@ -496,6 +515,20 @@ function inspectMessage(msg, socket) {
 
   console.log(`[ShieldWatch] 🚨 WS ${threat.type.toUpperCase()} from ${msg.username}`);
   report('/api/event', event);
+}
+
+function maskPayload(body) {
+  if (!body || typeof body !== 'object') return body;
+  const masked = { ...body };
+  const sensitiveKeys = ['password', 'pass', 'pwd', 'secret', 'token', 'apiKey', 'credential'];
+  
+  for (const key of Object.keys(masked)) {
+    const lowerKey = key.toLowerCase();
+    if (sensitiveKeys.some(sk => lowerKey.includes(sk))) {
+      masked[key] = '[REDACTED]';
+    }
+  }
+  return masked;
 }
 
 // ─── Fingerprint Forwarding ───────────────────────────────────────────────────
