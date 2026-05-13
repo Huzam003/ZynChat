@@ -34,9 +34,9 @@ Nginx acts as a Secure Gateway for local deployments.
    ```
 3. Go to https://render.com → Sign up free → New Web Service
 4. Connect your GitHub repo `zynchat`
-5. Render auto-detects the settings from render.yaml
-6. Click **Deploy** — wait ~3 minutes
-7. You get a URL like: `https://zynchat-kuuz.onrender.com`
+4. Render will detect the `Dockerfile` and `render.yaml` automatically.
+5. It will build your custom **Security Container** (this takes about 2-3 minutes).
+6. Once deployed, Nginx and ShieldWatch will be protecting your app in the cloud!
 
 ### Step 2 — Install ngrok (free)
 
