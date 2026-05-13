@@ -109,6 +109,8 @@ async function init() {
     myAvatar.style.background   = currentUser.avatar_color || '#3b82f6';
     myAvatar.style.borderRadius = '10px';
 
+    $('userProfile').addEventListener('click', () => showProfile(currentUser.username, currentUser.avatar_color, currentUser.role, currentUser.bio));
+
     renderRooms();
 
     // Auto-join first room
@@ -477,15 +479,106 @@ $('profileModal').addEventListener('click', (e) => { if (e.target === $('profile
 
 function showProfile(username, avatarColor, role, bio) {
   const body = $('profileBody');
-  body.innerHTML = `
-    <div class="profile-card">
-      <div class="profile-big-avatar" style="background:${escapeHTML(avatarColor || '#3b82f6')}">${username[0].toUpperCase()}</div>
-      <div class="profile-username">${escapeHTML(username)}</div>
-      <div class="profile-role">${role === 'admin' ? '⚑ Admin' : 'Member'}</div>
-      ${bio ? `<div class="profile-bio">${escapeHTML(bio)}</div>` : ''}
-    </div>
-  `;
+  const isMe = (username === currentUser.username);
+  
+  if (isMe) {
+    // Render Edit Form
+    const palette = ['#3b82f6','#8b5cf6','#10b981','#f59e0b','#ef4444','#ec4899','#06b6d4'];
+    let colorHtml = '';
+    palette.forEach(c => {
+      const active = (c.toLowerCase() === (avatarColor || '#3b82f6').toLowerCase());
+      colorHtml += `<div class="color-swatch${active ? ' active' : ''}" style="background:${c}" data-color="${c}"></div>`;
+    });
+
+    body.innerHTML = `
+      <div class="profile-card">
+        <div class="profile-big-avatar" id="editAvatarPreview" style="background:${escapeHTML(avatarColor || '#3b82f6')}">${username[0].toUpperCase()}</div>
+        <div class="profile-username">${escapeHTML(username)}</div>
+        <div class="profile-role">${role === 'admin' ? '⚑ Admin' : 'Member'}</div>
+        
+        <div class="profile-form">
+          <div class="form-group">
+            <label>Bio</label>
+            <textarea id="editBio" placeholder="Tell us about yourself...">${escapeHTML(bio || '')}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Avatar Color</label>
+            <div class="color-picker" id="editColorPicker">
+              ${colorHtml}
+            </div>
+          </div>
+          <div class="profile-actions">
+            <button class="btn btn-primary" id="saveProfileBtn">Save Changes</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Interaction for color picker
+    let selectedColor = avatarColor || '#3b82f6';
+    body.querySelectorAll('.color-swatch').forEach(el => {
+      el.addEventListener('click', () => {
+        body.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+        el.classList.add('active');
+        selectedColor = el.dataset.color;
+        $('editAvatarPreview').style.background = selectedColor;
+      });
+    });
+
+    $('saveProfileBtn').addEventListener('click', () => saveProfile(selectedColor));
+
+  } else {
+    // Render Static Card
+    body.innerHTML = `
+      <div class="profile-card">
+        <div class="profile-big-avatar" style="background:${escapeHTML(avatarColor || '#3b82f6')}">${username[0].toUpperCase()}</div>
+        <div class="profile-username">${escapeHTML(username)}</div>
+        <div class="profile-role">${role === 'admin' ? '⚑ Admin' : 'Member'}</div>
+        ${bio ? `<div class="profile-bio">${escapeHTML(bio)}</div>` : ''}
+      </div>
+    `;
+  }
+  
   $('profileModal').classList.add('open');
+}
+
+async function saveProfile(avatarColor) {
+  const bio = $('editBio').value.trim();
+  const btn = $('saveProfileBtn');
+  
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  try {
+    const res = await fetch('/api/profile/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bio, avatar_color: avatarColor })
+    });
+    
+    const data = await res.json();
+    if (data.ok) {
+      // Update local state
+      currentUser.bio = data.user.bio;
+      currentUser.avatar_color = data.user.avatar_color;
+      
+      // Update UI elements
+      myAvatar.style.background = currentUser.avatar_color;
+      
+      // Close modal
+      $('profileModal').classList.remove('open');
+      
+      // Emit update via socket if needed (server usually handles broadcast on next message)
+      console.log('Profile updated successfully');
+    } else {
+      alert('Error: ' + data.error);
+    }
+  } catch (e) {
+    alert('Failed to save profile.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save Changes';
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

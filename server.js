@@ -2,17 +2,9 @@
  * ZynChat — Main Server
  * Express 4 + Socket.io 4 + SQLite (better-sqlite3)
  * ShieldWatch RASP sensor optional via SW_ENABLED env var
- *
- * ⚠️  INTENTIONAL VULNERABILITIES FOR DEMO:
- *   1. /api/login              — SQL Injection (raw string concat)
- *   2. /api/search             — Reflected XSS (innerHTML on client)
- *   3. /api/file               — Path Traversal (no jail check)
- *   4. /api/profile/update     — CSRF (no token, accepts form submissions)
- *   5. /api/user/:id           — IDOR (no ownership check, leaks password)
- *   6. /api/session/id+fix     — Session Fixation (exposes & accepts arbitrary session IDs)
- *   7. /api/tools/ping         — Command Injection (exec without sanitisation)
- *   8. /api/login (repeated)   — Brute Force (no lockout)
  */
+
+require('dotenv').config();
 
 const express        = require('express');
 const http           = require('http');
