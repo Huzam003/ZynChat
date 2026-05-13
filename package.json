@@ -4,8 +4,9 @@
   "description": "ZynChat — Enterprise Messaging Platform",
   "main": "main.js",
   "scripts": {
-    "start": "node server.js",
-    "start:secure": "nginx -c $PWD/nginx/zynchat.conf & node server.js",
+    "start": "bash scripts/launch-standard.sh",
+    "start:secure": "bash scripts/launch-secure.sh",
+    "stop": "fuser -k 3001/tcp 3002/tcp 8080/tcp || true",
     "desktop": "electron .",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux AppImage"

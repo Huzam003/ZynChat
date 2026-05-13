@@ -1,7 +1,12 @@
-◇ injected env (2) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+◇ injected env (2) from .env // tip: ⌘ override existing { override: true }
 [ShieldWatch] ✅ RASP sensor ACTIVE — Cerebro: localhost:3002
 [DB] Loaded existing database from disk
 [DB] ZynChat database ready ✅
 
 🚀 ZynChat running → http://localhost:3001
 
+[ShieldWatch] 📡 Reporting to localhost:3002/api/fingerprint with token: sw-i...
+[+] dfsfsdfs connected (eG-dq3Wp4O2Bzz8LAAAB)
+[ShieldWatch] 📡 Reporting to localhost:3002/api/fingerprint with token: sw-i...
+[-] dfsfsdfs disconnected
+[ShieldWatch] 📡 Reporting to localhost:3002/api/fingerprint with token: sw-i...

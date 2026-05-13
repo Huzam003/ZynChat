@@ -1,0 +1,21 @@
+t=2026-05-14T01:42:48+0500 lvl=info msg="no configuration paths supplied"
+t=2026-05-14T01:42:48+0500 lvl=info msg="using configuration at default config path" path=/home/we/.config/ngrok/ngrok.yml
+t=2026-05-14T01:42:48+0500 lvl=info msg="open config file" path=/home/we/.config/ngrok/ngrok.yml err=nil
+t=2026-05-14T01:42:48+0500 lvl=info msg="FIPS 140 mode" enabled=false
+t=2026-05-14T01:42:48+0500 lvl=info msg="starting web service" obj=web addr=127.0.0.1:4040 allow_hosts=[]
+t=2026-05-14T01:42:50+0500 lvl=info msg="client session established" obj=tunnels.session
+t=2026-05-14T01:42:50+0500 lvl=info msg="tunnel session started" obj=tunnels.session
+t=2026-05-14T01:42:50+0500 lvl=info msg="update available" obj=updater
+t=2026-05-14T01:42:50+0500 lvl=info msg="started tunnel" obj=tunnels name=command_line addr=http://localhost:8080 url=https://pablo-ghastful-unponderously.ngrok-free.dev
+t=2026-05-14T01:42:51+0500 lvl=info msg=start pg=/api/tunnels id=967537e959644620
+t=2026-05-14T01:42:51+0500 lvl=info msg=end pg=/api/tunnels id=967537e959644620 status=200 dur=138.969µs
+t=2026-05-14T01:43:39+0500 lvl=info msg="join connections" obj=join id=629a5198e62d l=127.0.0.1:8080 r=59.103.195.78:40108
+t=2026-05-14T01:43:50+0500 lvl=info msg="join connections" obj=join id=ae410c46e68c l=127.0.0.1:8080 r=59.103.195.78:40108
+t=2026-05-14T01:43:50+0500 lvl=info msg="join connections" obj=join id=817889ad9fd1 l=127.0.0.1:8080 r=59.103.195.78:40108
+t=2026-05-14T01:43:59+0500 lvl=info msg="join connections" obj=join id=c55af6df3e5e l=127.0.0.1:8080 r=59.103.195.78:40108
+t=2026-05-14T01:43:59+0500 lvl=info msg="join connections" obj=join id=8c76fb113d4e l=127.0.0.1:8080 r=59.103.195.78:40108
+t=2026-05-14T01:44:00+0500 lvl=info msg="join connections" obj=join id=39b5a35f75b4 l=127.0.0.1:8080 r=59.103.195.78:46290
+t=2026-05-14T01:46:45+0500 lvl=info msg="join connections" obj=join id=c233ad28e62c l=127.0.0.1:8080 r=59.103.195.78:55440
+t=2026-05-14T01:53:11+0500 lvl=info msg="join connections" obj=join id=d1029988db47 l=127.0.0.1:8080 r=59.103.195.78:55440
+t=2026-05-14T01:53:12+0500 lvl=info msg="join connections" obj=join id=e14dd6d9bdde l=127.0.0.1:8080 r=59.103.195.78:55440
+t=2026-05-14T01:53:12+0500 lvl=info msg="join connections" obj=join id=e30d38aab59b l=127.0.0.1:8080 r=59.103.195.78:55440

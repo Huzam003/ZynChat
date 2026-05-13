@@ -76,20 +76,27 @@ Nginx acts as a Secure Gateway for local deployments.
 
 ---
 
-## DEMO DAY — Start Everything
+### Quick Launch (Recommended)
 
-### Terminal 1 — ShieldWatch Dashboard:
+Start everything (Nginx + Collector + ZynChat) with one command:
 ```bash
-cd ~/Desktop/ShieldWatch
+npm run start:secure
+```
+
+Or start the unprotected version:
+```bash
+npm run start
+```
+
+---
+
+### Terminal 1 — Manual Startup (Legacy):
+```bash
+cd shieldwatch
 node collector.js
 ```
 
-### Terminal 2 — ngrok tunnel (optional):
-```bash
-ngrok http 3002
-```
-
-### Terminal 3 — Nginx Secure Proxy:
+### Terminal 2 — Nginx Secure Proxy:
 ```bash
 nginx -c nginx/zynchat.conf
 ```
