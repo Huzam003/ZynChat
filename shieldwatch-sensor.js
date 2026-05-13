@@ -19,6 +19,7 @@ const crypto = require('crypto');
 const RAW_ADDR  = process.env.SW_CEREBRO_ADDR || 'localhost:3002';
 const APP_ID    = process.env.SW_APP_ID       || 'zynchat';
 const LOG_ONLY  = process.env.SW_LOG_ONLY === 'true';
+const API_TOKEN = process.env.SW_API_TOKEN    || 'sw-internal-token-xyz';
 
 // ─── Parse the collector address ──────────────────────────────────────────────
 // Supports:
@@ -50,7 +51,10 @@ function fetchBlocklist() {
     port:     COLLECTOR.port,
     path:     '/api/blocked',
     method:   'GET',
-    headers:  { 'ngrok-skip-browser-warning': 'true' },
+    headers:  { 
+      'ngrok-skip-browser-warning': 'true',
+      'x-shieldwatch-token': API_TOKEN
+    },
     timeout:  4000,
   };
   const req = module_.request(options, res => {
@@ -84,7 +88,10 @@ function fetchFingerprintBlocklist() {
     port:     COLLECTOR.port,
     path:     '/api/blocked-fp',
     method:   'GET',
-    headers:  { 'ngrok-skip-browser-warning': 'true' },
+    headers:  { 
+      'ngrok-skip-browser-warning': 'true',
+      'x-shieldwatch-token': API_TOKEN
+    },
     timeout:  4000,
   };
   const req = module_.request(options, res => {
@@ -343,7 +350,8 @@ function report(endpoint, payload) {
     headers:  {
       'Content-Type':   'application/json',
       'Content-Length': Buffer.byteLength(body),
-      'ngrok-skip-browser-warning': 'true'
+      'ngrok-skip-browser-warning': 'true',
+      'x-shieldwatch-token': API_TOKEN
     },
     timeout: 4000,
   };

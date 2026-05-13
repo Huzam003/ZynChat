@@ -301,3 +301,9 @@
 2026/05/13 23:44:37 [error] 114087#114087: *454 limiting requests, excess: 20.730 by zone "mylimit", client: 127.0.0.1, server: localhost, request: "GET /ping HTTP/1.0", host: "localhost:8080"
 2026/05/13 23:44:37 [error] 114087#114087: *455 limiting requests, excess: 20.730 by zone "mylimit", client: 127.0.0.1, server: localhost, request: "GET /ping HTTP/1.0", host: "localhost:8080"
 2026/05/13 23:44:37 [error] 114087#114087: *456 limiting requests, excess: 20.730 by zone "mylimit", client: 127.0.0.1, server: localhost, request: "GET /ping HTTP/1.0", host: "localhost:8080"
+2026/05/14 00:36:45 [emerg] 236824#236824: bind() to 0.0.0.0:8080 failed (98: Address already in use)
+2026/05/14 00:36:45 [emerg] 236824#236824: bind() to 0.0.0.0:8080 failed (98: Address already in use)
+2026/05/14 00:36:45 [emerg] 236824#236824: bind() to 0.0.0.0:8080 failed (98: Address already in use)
+2026/05/14 00:36:45 [emerg] 236824#236824: bind() to 0.0.0.0:8080 failed (98: Address already in use)
+2026/05/14 00:36:45 [emerg] 236824#236824: bind() to 0.0.0.0:8080 failed (98: Address already in use)
+2026/05/14 00:36:45 [emerg] 236824#236824: still could not bind()
