@@ -356,8 +356,17 @@ function report(endpoint, payload) {
     timeout: 4000,
   };
 
-  const req = module_.request(options, res => { res.resume(); });
-  req.on('error',   () => {}); // fail open
+  console.log(`[ShieldWatch] 📡 Reporting to ${options.hostname}:${options.port}${options.path} with token: ${API_TOKEN.slice(0,4)}...`);
+
+  const req = module_.request(options, res => { 
+    if (res.statusCode !== 200) {
+      console.error(`[ShieldWatch] ❌ Report failed: ${res.statusCode} to ${endpoint}`);
+    }
+    res.resume(); 
+  });
+  req.on('error',   (e) => {
+    console.error(`[ShieldWatch] ❌ Report error: ${e.message}`);
+  }); 
   req.on('timeout', () => req.destroy());
   req.write(body);
   req.end();
