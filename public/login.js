@@ -257,7 +257,7 @@ document.getElementById('loginUsername').addEventListener('keydown', (e) => {
 
     if (scanBar) {
       scanBar.classList.add('sw-scan-done');
-      if (scanText) scanText.textContent = '✓ Device verified — you may sign in';
+      if (scanText) scanText.textContent = '✓ Verified — you may sign in';
       // Fade out the bar after 2.2 s so it doesn't clutter the UI
       setTimeout(() => { scanBar.style.opacity = '0'; }, 2200);
       setTimeout(() => { scanBar.style.display  = 'none'; }, 2700);

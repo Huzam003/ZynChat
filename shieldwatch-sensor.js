@@ -26,12 +26,16 @@ const LOG_ONLY  = process.env.SW_LOG_ONLY === 'true';
 //   abc123.ngrok-free.app  → https, port 443  (ngrok HTTP tunnel)
 //   0.tcp.ngrok.io:12345   → http, port 12345 (ngrok TCP tunnel)
 function parseAddr(addr) {
-  if (addr.includes(':')) {
-    const [host, portStr] = addr.split(':');
-    return { host, port: parseInt(portStr, 10), useHttps: false };
+  // Clean up: remove protocol, trailing slashes, and whitespace
+  let clean = addr.trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+  
+  if (clean.includes(':')) {
+    const [host, portStr] = clean.split(':');
+    const port = parseInt(portStr, 10);
+    return { host, port: isNaN(port) ? 3002 : port, useHttps: false };
   }
-  // No port = ngrok HTTPS domain
-  return { host: addr, port: 443, useHttps: true };
+  // No port = ngrok HTTPS domain (default to 443)
+  return { host: clean, port: 443, useHttps: true };
 }
 
 const COLLECTOR = parseAddr(RAW_ADDR);

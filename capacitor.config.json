@@ -8,8 +8,8 @@
     "webContentsDebuggingEnabled": true
   },
   "server": {
-    "url": "https://nexachat-kuuz.onrender.com/chat",
-    "allowNavigation": ["nexachat-kuuz.onrender.com", "*.onrender.com", "*"],
+    "url": "https://zynchat.onrender.com",
+    "allowNavigation": ["zynchat.onrender.com", "*.onrender.com", "*"],
     "cleartext": true,
     "androidScheme": "https"
   },

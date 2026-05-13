@@ -3,7 +3,7 @@ const path = require('path');
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 // All platforms connect to the same cloud server for sync
-const CLOUD_SERVER = 'https://nexachat-kuuz.onrender.com/chat';
+const CLOUD_SERVER = 'https://zynchat.onrender.com/chat';
 
 let mainWindow;
 

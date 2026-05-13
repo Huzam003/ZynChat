@@ -9,7 +9,7 @@ const ZynConfig = {
   STORAGE_KEY: 'zynchat_server_url',
 
   // Default cloud server URL (Render deployment)
-  DEFAULT_SERVER: 'https://nexachat-kuuz.onrender.com',
+  DEFAULT_SERVER: 'https://zynchat.onrender.com',
 
   /**
    * Detects if we're running inside a native shell (Capacitor or Electron)
