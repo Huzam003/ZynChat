@@ -74,9 +74,20 @@ app.get('/chat', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'chat.html'));
 });
 
-// ─── Health Check ─────────────────────────────────────────────────────────────
-app.get('/ping', (req, res) => {
-  res.json({ status: 'online', app: 'zynchat', version: '2.0.0', shieldwatch: !!sw });
+// ─── Nginx Security Forwarder ────────────────────────────────────────────────
+app.get('/api/security/nginx-block', (req, res) => {
+  const { reason } = req.query;
+  if (sw) {
+    sw.reportNginxEvent(req, reason);
+  }
+  res.status(reason === 'rate-limit' ? 429 : 403).json({
+    ok: false,
+    blocked: true,
+    error: reason === 'rate-limit' 
+      ? 'Too many requests. Blocked by Nginx Network Shield.' 
+      : 'Access denied. Blocked by Nginx Network Shield.',
+    layer: 'network'
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,8 @@
+2026/05/13 23:09:14 [emerg] 96508#96508: bind() to 0.0.0.0:8080 failed (98: Address already in use)
+2026/05/13 23:09:14 [emerg] 96508#96508: bind() to 0.0.0.0:8080 failed (98: Address already in use)
+2026/05/13 23:09:14 [emerg] 96508#96508: bind() to 0.0.0.0:8080 failed (98: Address already in use)
+2026/05/13 23:09:14 [emerg] 96508#96508: bind() to 0.0.0.0:8080 failed (98: Address already in use)
+2026/05/13 23:09:14 [emerg] 96508#96508: bind() to 0.0.0.0:8080 failed (98: Address already in use)
+2026/05/13 23:09:14 [emerg] 96508#96508: still could not bind()
+2026/05/13 23:09:27 [error] 96587#96587: *1 rewrite or internal redirection cycle while internally redirecting to "/api/security/nginx-block", client: 127.0.0.1, server: localhost, request: "GET / HTTP/1.1", host: "localhost:8080"
+2026/05/13 23:10:12 [error] 96924#96924: *1 rewrite or internal redirection cycle while internally redirecting to "/api/security/nginx-block" while sending to client, client: 127.0.0.1, server: localhost, request: "GET / HTTP/1.1", upstream: "http://127.0.0.1:3001/api/security/nginx-block?reason=bot", host: "localhost:8080"

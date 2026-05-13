@@ -119,7 +119,7 @@ function checkIDOR(req) {
   if (!sessionUserId || requestedId !== sessionUserId) {
     return {
       type:    'idor',
-      matched: 'unauthorized user record access (no ownership check)',
+      matched: 'Shield (App): Unauthorized object access (IDOR)',
       raw:     `GET /api/user/${requestedId} — session belongs to user:${sessionUserId || 'anonymous'}`,
     };
   }
@@ -160,7 +160,7 @@ function checkCSRF(req) {
     const referer = req.headers['referer'] || '';
     return {
       type:    'csrf',
-      matched: 'form-encoded POST to protected state-changing endpoint',
+      matched: 'Shield (App): Unauthorized state-changing form submission (CSRF)',
       raw:     `${req.method} ${rawPath} | Origin: ${origin || 'none'} | Referer: ${referer || 'none'}`,
     };
   }
@@ -183,7 +183,7 @@ function trackLoginFailure(req) {
   if (prev.length >= BF_THRESHOLD) {
     const threat  = {
       type:    'bruteforce',
-      matched: `>=${BF_THRESHOLD} failed logins/60s`,
+      matched: 'Shield (App): Login Brute Force detected',
       raw:     `${prev.length} failed login attempts from ${ip}`,
     };
     const verdict = LOG_ONLY ? 'LOGGED' : 'BLOCKED';
@@ -208,7 +208,7 @@ function checkDDoS(ip) {
   if (prev.length > DDOS_THRESHOLD) {
     return {
       type:    'ddos',
-      matched: `>${DDOS_THRESHOLD} req/10s`,
+      matched: 'Shield (App): API Request Flood detected',
       raw:     `${prev.length} requests in 10s from ${ip}`,
     };
   }
@@ -284,7 +284,8 @@ function detectThreats(value) {
   for (const [type, patterns] of Object.entries(PATTERNS)) {
     for (const re of patterns) {
       if (re.test(value) || re.test(decoded)) {
-        return { type, matched: re.toString(), raw: value.slice(0, 200) };
+        const typeMap = { sqli: 'SQL Injection', xss: 'XSS Attempt', pathTraversal: 'Path Traversal', cmdInjection: 'Command Injection' };
+        return { type, matched: `Shield (App): ${typeMap[type] || type} signature detected`, raw: value.slice(0, 200) };
       }
     }
   }
@@ -546,4 +547,19 @@ function honeypotHit(path, req) {
   report('/api/event', event);
 }
 
-module.exports = { httpMiddleware, inspectMessage, detectThreats, submitFingerprint, honeypotHit, trackLoginFailure };
+// ─── Nginx Block Forwarder ───────────────────────────────────────────────────
+function reportNginxEvent(req, reason) {
+  const threatType = (reason === 'rate-limit') ? 'ddos' : 'bot';
+  const threatDesc = (reason === 'rate-limit') ? 'Shield (Network): Rate limit exceeded' : 'Shield (Network): Malicious bot signature';
+  
+  const event = buildEvent(req, { 
+    type:    threatType, 
+    matched: threatDesc,
+    raw:     req.headers['user-agent'] || 'none'
+  }, 'BLOCKED');
+
+  console.log(`[ShieldWatch] 🛡️ Forwarding Network Shield event`);
+  report('/api/event', event);
+}
+
+module.exports = { httpMiddleware, inspectMessage, detectThreats, submitFingerprint, honeypotHit, trackLoginFailure, reportNginxEvent };
