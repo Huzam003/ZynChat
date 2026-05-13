@@ -5,6 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "node server.js",
+    "start:secure": "nginx -c $PWD/nginx/zynchat.conf & node server.js",
     "desktop": "electron .",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux AppImage"

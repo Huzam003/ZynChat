@@ -2,20 +2,18 @@
 
 ## Overview
 
-ZynChat runs on Render.com (cloud, public URL).
+ZynChat runs on Render.com (cloud) or Locally.
 ShieldWatch runs on YOUR laptop.
-ngrok connects them.
+Nginx acts as a Secure Gateway for local deployments.
 
 ```
 [Anyone's Browser]
        ↓
-[ZynChat on Render]  ← public internet
-       ↓  (sends attack events through ngrok)
-[ngrok tunnel]
+[Nginx Proxy (Port 8080)] ← Network Shield (Rate limiting, Bots)
        ↓
-[ShieldWatch on YOUR Laptop]
+[ZynChat Server (Port 3001)] ← Application Shield (ShieldWatch RASP)
        ↓
-[Red Dashboard at localhost:3002]
+[ShieldWatch Collector (Port 3002)] ← Central Intelligence Dashboard
 ```
 
 ---
@@ -86,9 +84,14 @@ cd ~/Desktop/ShieldWatch
 node collector.js
 ```
 
-### Terminal 2 — ngrok tunnel:
+### Terminal 2 — ngrok tunnel (optional):
 ```bash
 ngrok http 3002
+```
+
+### Terminal 3 — Nginx Secure Proxy:
+```bash
+nginx -c nginx/zynchat.conf
 ```
 
 ### Browser 1 — ShieldWatch Dashboard (only you see this):
