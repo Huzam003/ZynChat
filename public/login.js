@@ -1,5 +1,53 @@
 /* ─── ZynChat Login Page Logic ────────────────────────────────────────────── */
 
+// ─── Theme Management ────────────────────────────────────────────────────────
+const themeToggle = document.getElementById('themeToggle');
+const body = document.body;
+
+function setTheme(theme) {
+  if (theme === 'light') {
+    body.classList.add('light-theme');
+    localStorage.setItem('zynchat-theme', 'light');
+  } else {
+    body.classList.remove('light-theme');
+    localStorage.setItem('zynchat-theme', 'dark');
+  }
+}
+
+// Init theme
+const savedTheme = localStorage.getItem('zynchat-theme') || 'dark';
+setTheme(savedTheme);
+
+if (themeToggle) {
+  themeToggle.addEventListener('click', () => {
+    setTheme(body.classList.contains('light-theme') ? 'dark' : 'light');
+  });
+}
+
+// ─── 3D Tilt Effect ──────────────────────────────────────────────────────────
+const authCard = document.getElementById('authCard');
+const wrapper = document.querySelector('.auth-wrapper');
+
+if (authCard && wrapper) {
+  wrapper.addEventListener('mousemove', (e) => {
+    const { clientX, clientY } = e;
+    const { left, top, width, height } = authCard.getBoundingClientRect();
+    
+    const centerX = left + width / 2;
+    const centerY = top + height / 2;
+    
+    const rotateX = (centerY - clientY) / 20;
+    const rotateY = (clientX - centerX) / 20;
+    
+    authCard.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+  });
+
+  wrapper.addEventListener('mouseleave', () => {
+    authCard.style.transform = `rotateX(0deg) rotateY(0deg)`;
+  });
+}
+
+
 // ─── Animated canvas background ───────────────────────────────────────────────
 (function initCanvas() {
   const canvas = document.getElementById('bgCanvas');

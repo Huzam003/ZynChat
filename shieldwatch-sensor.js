@@ -297,10 +297,13 @@ function scanRequest(req) {
   const sensitiveKeys = ['password', 'pass', 'pwd', 'secret', 'token', 'apiKey', 'credential'];
   
   // Scan query params
-  for (const [key, val] of Object.entries(req.query || {})) {
-    if (typeof val !== 'string') continue;
-    const t = detectThreats(val);
-    if (t) return t;
+  if (req.query && Object.keys(req.query).length > 0) {
+    console.log(`[ShieldWatch] Scanning query:`, JSON.stringify(req.query));
+    for (const [key, val] of Object.entries(req.query)) {
+      if (typeof val !== 'string') continue;
+      const t = detectThreats(val);
+      if (t) return t;
+    }
   }
 
   // Scan body (with masking for sensitive fields)

@@ -1,14 +1,27 @@
-/* ─── ZynChat — Chat Interface ─────────────────────────────────────────────
- *
- * ⚠️  INTENTIONAL VULNERABILITIES (for ShieldWatch demo):
- *
- *  1. renderSearchResults() — uses innerHTML to render query param
- *     XSS payload: search for <img src=x onerror=alert('XSS')>
- *
- *  2. File viewer (/api/file?path=...) — path not sanitised server-side
- *     Path traversal: browse to ../private/db_config.txt
- *
- * ─────────────────────────────────────────────────────────────────────────── */
+// ─── Theme Management ────────────────────────────────────────────────────────
+const themeToggle = document.getElementById('themeToggle');
+const body = document.body;
+
+function setTheme(theme) {
+  if (theme === 'light') {
+    body.classList.add('light-theme');
+    localStorage.setItem('zynchat-theme', 'light');
+  } else {
+    body.classList.remove('light-theme');
+    localStorage.setItem('zynchat-theme', 'dark');
+  }
+}
+
+// Init theme
+const savedTheme = localStorage.getItem('zynchat-theme') || 'dark';
+setTheme(savedTheme);
+
+if (themeToggle) {
+  themeToggle.addEventListener('click', () => {
+    setTheme(body.classList.contains('light-theme') ? 'dark' : 'light');
+  });
+}
+
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let currentUser  = null;
@@ -193,34 +206,28 @@ function appendWelcome(room) {
 let lastMsgUser = null;
 
 function appendMessage(msg, animate = true) {
-  const isGrouped = (lastMsgUser === msg.username);
-  lastMsgUser = msg.username;
-
+  const isMine = (msg.username === currentUser.username);
+  
   const div = document.createElement('div');
-  div.className = 'msg' + (isGrouped ? ' grouped' : '');
+  div.className = 'message' + (isMine ? ' mine' : '');
   div.dataset.msgId = msg.id;
 
   const time = formatTime(msg.created_at);
+  const initial = msg.username[0].toUpperCase();
+  const color = msg.avatar_color || '#6366f1';
 
-  if (isGrouped) {
-    // Compact continuation
-    div.innerHTML = `<div class="msg-body"><div class="msg-text">${escapeHTML(msg.text)}</div></div>`;
-  } else {
-    const initial    = msg.username[0].toUpperCase();
-    const color      = msg.avatar_color || '#3b82f6';
-    const roleClass  = msg.role === 'admin' ? ' role-admin' : '';
-
-    div.innerHTML = `
-      <div class="msg-avatar" style="background:${escapeHTML(color)}" data-user="${escapeHTML(msg.username)}">${escapeHTML(initial)}</div>
-      <div class="msg-body">
-        <div class="msg-header">
-          <span class="msg-username${roleClass}" data-user="${escapeHTML(msg.username)}">${escapeHTML(msg.username)}</span>
-          <span class="msg-time">${time}</span>
-        </div>
+  div.innerHTML = `
+    <div class="msg-avatar" style="background:${escapeHTML(color)}" data-user="${escapeHTML(msg.username)}">${escapeHTML(initial)}</div>
+    <div class="msg-content">
+      <div class="msg-header">
+        <span class="msg-user" data-user="${escapeHTML(msg.username)}">${escapeHTML(msg.username)}</span>
+        <span class="msg-time">${time}</span>
+      </div>
+      <div class="msg-bubble">
         <div class="msg-text">${escapeHTML(msg.text)}</div>
       </div>
-    `;
-  }
+    </div>
+  `;
 
   // Avatar / username click → profile
   div.querySelectorAll('[data-user]').forEach(el => {

@@ -90,6 +90,11 @@ app.get('/api/security/nginx-block', (req, res) => {
   });
 });
 
+// ─── Health Check ─────────────────────────────────────────────────────────────
+app.get('/ping', (req, res) => {
+  res.json({ status: 'online', app: 'zynchat', version: '2.0.0', shieldwatch: !!sw });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ⚠️  VULNERABILITY #1: SQL INJECTION
 //     Username is concatenated directly into the SQL query.
