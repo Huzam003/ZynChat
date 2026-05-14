@@ -53,7 +53,7 @@ function fetchBlocklist() {
     method:   'GET',
     headers:  { 
       'ngrok-skip-browser-warning': 'true',
-      'x-shieldwatch-token': API_TOKEN
+      'x-sw-api-token': API_TOKEN
     },
     timeout:  4000,
   };
@@ -90,7 +90,7 @@ function fetchFingerprintBlocklist() {
     method:   'GET',
     headers:  { 
       'ngrok-skip-browser-warning': 'true',
-      'x-shieldwatch-token': API_TOKEN
+      'x-sw-api-token': API_TOKEN
     },
     timeout:  4000,
   };
@@ -351,7 +351,7 @@ function report(endpoint, payload) {
       'Content-Type':   'application/json',
       'Content-Length': Buffer.byteLength(body),
       'ngrok-skip-browser-warning': 'true',
-      'x-shieldwatch-token': API_TOKEN
+      'x-sw-api-token': API_TOKEN
     },
     timeout: 4000,
   };
