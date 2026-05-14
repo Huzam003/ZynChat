@@ -230,7 +230,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
       // Brief success flash
       btn.style.background = '#10b981';
       btn.querySelector('.btn-text').textContent = '✓ Signed in';
-      setTimeout(() => { window.location.href = '/chat'; }, 500);
+      setTimeout(() => { window.location.href = '/chat'; }, 50);
     } else {
       showError('loginError', data.error || 'Login failed.');
       setLoading(btn, false);
@@ -268,7 +268,7 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
     if (data.ok) {
       btn.style.background = '#10b981';
       btn.querySelector('.btn-text').textContent = '✓ Account created';
-      setTimeout(() => { window.location.href = '/chat'; }, 500);
+      setTimeout(() => { window.location.href = '/chat'; }, 50);
     } else {
       showError('registerError', data.error || 'Registration failed.');
       setLoading(btn, false);
@@ -328,3 +328,23 @@ document.getElementById('loginForm').addEventListener('submit', function (e) {
     showError('loginError', 'Security scan still in progress — please wait a moment.');
   }
 }, true); // capture phase — runs before the regular submit listener
+
+// ─── Sync UI with Backend ShieldWatch Status ─────────────────────────────────
+fetch('/ping').then(res => res.json()).then(data => {
+  if (!data.shieldwatch) {
+    window._swFpReady = true;
+    const btn = document.getElementById('loginBtn');
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove('sw-locked');
+    }
+    const scanBar = document.getElementById('swScanBar');
+    if (scanBar) scanBar.style.display = 'none';
+
+    document.querySelectorAll('.badge-shield').forEach(b => {
+      b.textContent = 'Shield Offline';
+      b.style.color = 'rgba(255,255,255,0.3)';
+      b.style.border = '1px solid rgba(255,255,255,0.1)';
+    });
+  }
+}).catch(() => {});

@@ -4,8 +4,8 @@
   "description": "ZynChat — Enterprise Messaging Platform",
   "main": "main.js",
   "scripts": {
-    "start": "bash scripts/launch-standard.sh",
-    "start:secure": "bash scripts/launch-secure.sh",
+    "start": "python3 launch.py standard",
+    "start:secure": "python3 launch.py secure",
     "stop": "fuser -k 3001/tcp 3002/tcp 8080/tcp || true",
     "desktop": "electron .",
     "build:win": "electron-builder --win",

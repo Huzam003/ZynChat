@@ -22,24 +22,13 @@
 
     <!-- Brand -->
     <div class="sidebar-brand">
-      <div class="brand-logo-sm">N<span>C</span></div>
-      <span class="brand-text">ZynChat</span>
-      <div class="brand-actions">
-        <button class="icon-btn" id="searchToggleBtn" title="Search">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        </button>
+      <div class="brand-logo-svg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="brand-svg"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
       </div>
+      <span class="brand-text">ZynChat</span>
     </div>
 
-    <!-- Search Panel (hidden by default) -->
-    <div class="search-panel" id="searchPanel">
-      <div class="search-wrap">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input type="text" id="searchInput" placeholder="Search messages…" autocomplete="off">
-        <button class="clear-search" id="clearSearch">✕</button>
-      </div>
-      <div class="search-results" id="searchResults"></div>
-    </div>
+
 
     <!-- Channels Section -->
     <nav class="sidebar-nav">
@@ -62,6 +51,8 @@
         <!-- Populated by JS -->
       </ul>
     </div>
+
+
 
     <!-- ShieldWatch Security Widget -->
     <div class="security-widget" id="securityWidget">

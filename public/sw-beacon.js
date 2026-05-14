@@ -130,11 +130,11 @@
     } catch (e) { notifyReady(); }
   }
 
-  // 800ms delay — fast enough to complete before the user can type credentials
+  // Reduced delay for faster local testing
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () { setTimeout(run, 800); });
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(run, 10); });
   } else {
-    setTimeout(run, 800);
+    setTimeout(run, 10);
   }
 
 })();

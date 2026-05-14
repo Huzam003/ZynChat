@@ -51,10 +51,6 @@ const typingText      = $('typingText');
 const myAvatar        = $('myAvatar');
 const myUsername      = $('myUsername');
 const myRole          = $('myRole');
-const searchPanel     = $('searchPanel');
-const searchInput     = $('searchInput');
-const searchResults   = $('searchResults');
-
 // ─── Socket.io ────────────────────────────────────────────────────────────────
 const socket = io({ transports: ['websocket', 'polling'] });
 
@@ -105,15 +101,22 @@ function renderTyping() {
 // ─── Bootstrap ────────────────────────────────────────────────────────────────
 async function init() {
   try {
-    const [meRes, roomsRes] = await Promise.all([
+    const [meRes, roomsRes, pingRes] = await Promise.all([
       fetch('/api/me'),
-      fetch('/api/rooms')
+      fetch('/api/rooms'),
+      fetch('/ping')
     ]);
 
     if (meRes.status === 401) { window.location.href = '/'; return; }
 
     currentUser = await meRes.json();
     rooms       = await roomsRes.json();
+    const sysData = await pingRes.json();
+
+    if (!sysData.shieldwatch) {
+      const swWidget = $('securityWidget');
+      if (swWidget) swWidget.style.display = 'none';
+    }
 
     // Render current user
     myUsername.textContent      = currentUser.username;
@@ -235,29 +238,32 @@ function appendMessage(msg, animate = true) {
   });
 
   msgsList.appendChild(div);
+  scrollToBottom(animate);
 }
 
 // ─── Render Online Users ──────────────────────────────────────────────────────
 function renderOnlineUsers() {
   const unique = dedupeByUserId(onlineUsers);
-  onlineCount.textContent = unique.length;
+  if (onlineCount) onlineCount.textContent = unique.length;
 
-  onlineListEl.innerHTML = '';
-  unique.forEach(u => {
-    const li = document.createElement('li');
-    const isMe = (u.username === currentUser.username);
-    li.className = 'online-user' + (isMe ? ' active' : ''); 
-    li.innerHTML = `
-      <div class="online-avatar" style="background:${escapeHTML(u.avatar_color || '#3b82f6')}">${u.username[0].toUpperCase()}</div>
-      <div class="online-info">
-        <span class="online-name">${escapeHTML(u.username)}</span>
-        <span class="online-status-text">${isMe ? 'You' : 'Available'}</span>
-      </div>
-      <div class="user-status status-online"></div>
-    `;
-    li.addEventListener('click', () => showProfile(u.username, u.avatar_color, u.role, u.bio));
-    onlineListEl.appendChild(li);
-  });
+  if (onlineListEl) {
+    onlineListEl.innerHTML = '';
+    unique.forEach(u => {
+      const li = document.createElement('li');
+      const isMe = (u.username === currentUser.username);
+      li.className = 'online-user' + (isMe ? ' active' : ''); 
+      li.innerHTML = `
+        <div class="online-avatar" style="background:${escapeHTML(u.avatar_color || '#3b82f6')}">${u.username[0].toUpperCase()}</div>
+        <div class="online-info">
+          <span class="online-name">${escapeHTML(u.username)}</span>
+          <span class="online-status-text">${isMe ? 'You' : 'Available'}</span>
+        </div>
+        <div class="user-status status-online"></div>
+      `;
+      li.addEventListener('click', () => showProfile(u.username, u.avatar_color, u.role, u.bio));
+      onlineListEl.appendChild(li);
+    });
+  }
 }
 
 function renderMemberCount() {
@@ -318,10 +324,14 @@ msgInput.addEventListener('input', () => {
 // ─── Scroll to Bottom ─────────────────────────────────────────────────────────
 function scrollToBottom(smooth = true) {
   const c = $('messagesContainer');
-  const l = msgsList;
-  requestAnimationFrame(() => {
-    l.scrollTo({ top: l.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
-  });
+  if (!c) return;
+  setTimeout(() => {
+    if (smooth) {
+      c.scrollTo({ top: c.scrollHeight, behavior: 'smooth' });
+    } else {
+      c.scrollTop = c.scrollHeight;
+    }
+  }, 100);
 }
 
 // ─── Sidebar Toggle (mobile) ──────────────────────────────────────────────────
@@ -339,63 +349,6 @@ $('logoutBtn').addEventListener('click', async () => {
   await fetch('/api/logout', { method: 'POST' });
   window.location.href = '/';
 });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ⚠️  SEARCH — XSS VULNERABLE
-//     results.query is reflected from server and inserted via innerHTML
-//     Demo: search for <img src=x onerror=alert('ShieldWatch caught it!')>
-// ─────────────────────────────────────────────────────────────────────────────
-$('searchToggleBtn').addEventListener('click', () => {
-  searchPanel.classList.toggle('open');
-  if (searchPanel.classList.contains('open')) {
-    searchInput.focus();
-  }
-});
-
-$('clearSearch').addEventListener('click', () => {
-  searchInput.value = '';
-  searchResults.innerHTML = '';
-  searchPanel.classList.remove('open');
-});
-
-let searchDebounce = null;
-searchInput.addEventListener('input', () => {
-  clearTimeout(searchDebounce);
-  searchDebounce = setTimeout(doSearch, 400);
-});
-
-async function doSearch() {
-  const q = searchInput.value.trim();
-  if (!q || !currentRoom) { searchResults.innerHTML = ''; return; }
-
-  try {
-    const res  = await fetch(`/api/search?q=${encodeURIComponent(q)}&roomId=${currentRoom.id}`);
-    const data = await res.json();
-    renderSearchResults(data);
-  } catch (e) {
-    searchResults.innerHTML = '<div class="search-no-results">Error searching.</div>';
-  }
-}
-
-function renderSearchResults(data) {
-  if (!data.results || data.results.length === 0) {
-    // FIXED: data.query sanitized via escapeHTML
-    searchResults.innerHTML = `<div class="search-no-results">No results for "${escapeHTML(data.query)}"</div>`;
-    return;
-  }
-
-  // FIXED: data.query sanitized via escapeHTML
-  let html = `<div style="padding:6px 10px;font-size:11px;color:var(--text-muted)">Results for "${escapeHTML(data.query)}"</div>`;
-  data.results.forEach(msg => {
-    html += `
-      <div class="search-result-item" onclick="jumpToMsg(${msg.id})">
-        <div class="search-result-username">${escapeHTML(msg.username)}</div>
-        <div class="search-result-text">${escapeHTML(msg.text)}</div>
-      </div>
-    `;
-  });
-  searchResults.innerHTML = html;
-}
 
 // ─── Jump to message ──────────────────────────────────────────────────────────
 function jumpToMsg(id) {
@@ -511,7 +464,7 @@ function showProfile(username, avatarColor, role, bio) {
         <div class="profile-form">
           <div class="form-group">
             <label>Bio</label>
-            <textarea id="editBio" placeholder="Tell us about yourself...">${escapeHTML(bio || '')}</textarea>
+            <textarea id="editBio" class="modal-input modal-textarea" placeholder="Tell us about yourself...">${escapeHTML(bio || '')}</textarea>
           </div>
           <div class="form-group">
             <label>Avatar Color</label>
@@ -618,13 +571,6 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     $('filesModal').classList.remove('open');
     $('profileModal').classList.remove('open');
-    searchPanel.classList.remove('open');
-  }
-  // Ctrl+K / Cmd+K to search
-  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-    e.preventDefault();
-    searchPanel.classList.toggle('open');
-    if (searchPanel.classList.contains('open')) searchInput.focus();
   }
 });
 
