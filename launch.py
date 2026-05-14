@@ -90,20 +90,25 @@ def get_ngrok_url():
     return None
 
 def start_ngrok_tunnel():
-    # 1. Check if ngrok is ALREADY running first
-    existing_url = get_ngrok_url()
-    if existing_url:
-        clean_url = existing_url.replace("https://", "").replace("http://", "")
-        print(f"{C_GRN}[+] Found existing ngrok tunnel: {existing_url}{C_RST}")
-        return clean_url, None
+    # 1. First, try to detect any EXISTING active tunnel
+    for _ in range(3):
+        url = get_ngrok_url()
+        if url:
+            clean_url = url.replace("https://", "").replace("http://", "")
+            print(f"{C_GRN}[+] Found existing active tunnel: {url}{C_RST}")
+            return clean_url, None
+        time.sleep(1)
 
-    print(f"{C_YLW}[*] No active tunnel found. Starting automated ngrok...{C_RST}")
+    print(f"{C_YLW}[*] Cleaning up any old ngrok processes...{C_RST}")
+    # Force kill any ngrok processes
+    if os.name == 'posix':
+        subprocess.run("pkill -9 ngrok", shell=True, stderr=subprocess.DEVNULL)
+    else:
+        subprocess.run("taskkill /f /im ngrok.exe", shell=True, stderr=subprocess.DEVNULL)
     
-    # Try to kill zombie ngrok processes only if none are active
-    subprocess.run("pkill -f ngrok", shell=True, stderr=subprocess.DEVNULL)
-    time.sleep(1)
+    time.sleep(2)
     
-    # Start ngrok in background and capture stderr
+    print(f"{C_YLW}[*] Starting fresh automated ngrok tunnel...{C_RST}")
     try:
         proc = subprocess.Popen(
             ["ngrok", "http", "3002"], 
@@ -112,11 +117,11 @@ def start_ngrok_tunnel():
             text=True
         )
     except FileNotFoundError:
-        print(f"{C_RED}[-] Error: 'ngrok' command not found. Is it installed?{C_RST}")
+        print(f"{C_RED}[-] Error: 'ngrok' command not found.{C_RST}")
         return None, None
     
-    # Wait for tunnel to come up
-    for _ in range(40):
+    # Wait for tunnel
+    for _ in range(30):
         time.sleep(1)
         url = get_ngrok_url()
         if url:
@@ -124,14 +129,18 @@ def start_ngrok_tunnel():
             print(f"{C_GRN}[+] Tunnel Active: {url}{C_RST}")
             return clean_url, proc
         
-        # Check if process died early
         if proc.poll() is not None:
             err = proc.stderr.read()
-            print(f"{C_RED}[-] Ngrok failed to start. Error: {err.strip()}{C_RST}")
+            if "already online" in err.lower():
+                print(f"{C_YLW}[!] Tunnel is already online elsewhere. Trying to fetch URL...{C_RST}")
+                time.sleep(2)
+                url = get_ngrok_url()
+                if url:
+                    return url.replace("https://", "").replace("http://", ""), None
+            print(f"{C_RED}[-] Ngrok failed. Error: {err.strip()}{C_RST}")
             return None, None
     
-    print(f"{C_RED}[-] Timeout: ngrok started but tunnel didn't appear in 40s.{C_RST}")
-    print(f"{C_YLW}[!] Tip: Check http://localhost:4040 in your browser to see if ngrok is stuck.{C_RST}")
+    print(f"{C_RED}[-] Timeout: Tunnel didn't appear.{C_RST}")
     return None, None
 
 def wait_for_deployment(deploy_id):
