@@ -12,6 +12,10 @@ envsubst '${PORT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 # Start Nginx in the background
 nginx -g "daemon on;"
 
+# Start the ShieldWatch Collector (Cerebro) in the background
+echo "Initializing ShieldWatch Intelligence Collector..."
+node shieldwatch/collector.js &
+
 # Start the Node.js application
 echo "Launching ZynChat Backend..."
 export SW_ENABLED=true
