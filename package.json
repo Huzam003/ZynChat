@@ -4,7 +4,7 @@
   "description": "ZynChat — Enterprise Messaging Platform",
   "main": "main.js",
   "scripts": {
-    "start": "python3 launch.py standard",
+    "start": "node server.js",
     "start:secure": "python3 launch.py secure",
     "stop": "fuser -k 3001/tcp 3002/tcp 8080/tcp || true",
     "desktop": "electron .",

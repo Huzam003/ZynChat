@@ -4,6 +4,8 @@ import sys
 import subprocess
 import time
 import requests
+import json
+import signal
 
 # ─── ZynChat Remote Server Controller ──────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -51,6 +53,66 @@ def update_render_env(enabled):
     except Exception as e:
         print(f"{C_RED}[-] Connection failed: {e}{C_RST}")
 
+def update_render_env_var(key, value):
+    if RENDER_API_KEY == "your_render_api_key_here":
+        return False
+
+    print(f"{C_YLW}[*] Syncing Render Config: {key}={value}...{C_RST}")
+    
+    headers = {
+        "Authorization": f"Bearer {RENDER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    url = f"https://api.render.com/v1/services/{SERVICE_ID}/env-vars"
+    # Note: We use PUT which replaces the whole list or PATCH? 
+    # Render API PATCH /env-vars actually updates/adds. 
+    # Let's use the same logic as before but for dynamic key.
+    data = [{"key": key, "value": value}]
+    
+    try:
+        response = requests.put(url, headers=headers, json=data)
+        return response.status_code in [200, 201, 202]
+    except:
+        return False
+
+def get_ngrok_url():
+    try:
+        # Check if ngrok is already running and get URL from its API
+        res = requests.get("http://localhost:4040/api/tunnels", timeout=2)
+        if res.status_code == 200:
+            tunnels = res.json().get("tunnels", [])
+            for t in tunnels:
+                if t.get("proto") == "https":
+                    return t.get("public_url")
+    except:
+        pass
+    return None
+
+def start_ngrok_tunnel():
+    print(f"{C_YLW}[*] Starting automated ngrok tunnel on port 3002...{C_RST}")
+    
+    # Try to kill existing ngrok
+    subprocess.run("pkill -f ngrok", shell=True, stderr=subprocess.DEVNULL)
+    time.sleep(1)
+    
+    # Start ngrok in background
+    # We use -log=stdout to suppress terminal takeover or just redirect
+    proc = subprocess.Popen(["ngrok", "http", "3002"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    # Wait for tunnel to come up
+    for _ in range(10):
+        time.sleep(1.5)
+        url = get_ngrok_url()
+        if url:
+            # Strip https://
+            clean_url = url.replace("https://", "").replace("http://", "")
+            print(f"{C_GRN}[+] Tunnel Active: {url}{C_RST}")
+            return clean_url, proc
+    
+    print(f"{C_RED}[-] Failed to start ngrok. Please start it manually.{C_RST}")
+    return None, None
+
 def clear_cache_and_redeploy():
     if RENDER_API_KEY == "your_render_api_key_here":
         print(f"{C_RED}[!] Error: Render API Key not set in launch.py{C_RST}")
@@ -85,21 +147,45 @@ def check_dependencies():
 
 def launch_local_dashboard():
     check_dependencies()
-    print(f"\n{C_BLU}{C_BOLD}🛡️  STARTING LOCAL DASHBOARD (Monitoring Render)...{C_RST}")
+    print(f"\n{C_BLU}{C_BOLD}🛡️  STARTING AUTOMATED DASHBOARD...{C_RST}")
+    
+    # 1. Start Tunnel
+    addr, ngrok_proc = start_ngrok_tunnel()
+    
+    if addr:
+        # 2. Update Render
+        success = update_render_env_var("SW_CEREBRO_ADDR", addr)
+        if success:
+            print(f"{C_GRN}[+] Render updated with new tunnel address.{C_RST}")
+            print(f"{C_YLW}[*] Triggering redeploy to apply new address...{C_RST}")
+            clear_cache_and_redeploy()
+        else:
+            print(f"{C_RED}[-] Failed to update Render environment.{C_RST}")
+    
     # Kill previous dashboard
     subprocess.run("fuser -k 3002/tcp 2>/dev/null", shell=True)
     
-    print(f"{C_YLW}[!] SETUP REQUIRED:{C_RST}")
-    print(f"    1. Run '{C_CYN}ngrok http 3002{C_RST}' in another terminal.")
-    print(f"    2. Add the ngrok URL to Render env 'SW_CEREBRO_ADDR'.")
     print("-" * 60)
-    print(f"{C_GRN}[*] Local Collector active on http://localhost:3002{C_RST}")
-    print(f"{C_CYN}[*] Login: shieldwatch-admin-2024{C_RST}\n")
+    print(f"{C_GRN}[*] Dashboard: http://localhost:3002{C_RST}")
+    print(f"{C_CYN}[*] Login: shieldwatch-admin-2024{C_RST}")
+    print(f"{C_BLU}[*] Monitoring: {addr if addr else 'Local Only'}{C_RST}")
+    print("-" * 60)
     
     try:
-        subprocess.run(["node", "shieldwatch/collector.js"])
+        # Run collector
+        collector_proc = subprocess.Popen(["node", "shieldwatch/collector.js"])
+        
+        print(f"\n{C_BOLD}🚀 System is LIVE. Press Ctrl+C to stop everything.{C_RST}")
+        
+        while True:
+            time.sleep(1)
+            if collector_proc.poll() is not None:
+                break
     except KeyboardInterrupt:
-        print(f"\n{C_YLW}[*] Shutting down...{C_RST}")
+        print(f"\n{C_YLW}[*] Shutting down tunnel and dashboard...{C_RST}")
+        if ngrok_proc: ngrok_proc.terminate()
+        collector_proc.terminate()
+        subprocess.run("pkill -f ngrok", shell=True)
 
 if __name__ == "__main__":
     os.system('clear' if os.name == 'posix' else 'cls')
