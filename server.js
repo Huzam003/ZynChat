@@ -13,6 +13,9 @@ const session        = require('express-session');
 const path           = require('path');
 const fs             = require('fs');
 const cors           = require('cors');
+const helmet         = require('helmet');
+const bcrypt         = require('bcrypt');
+const crypto         = require('crypto');
 const { exec }       = require('child_process');
 const { initDB, getDB, getPrepare, execVulnerable } = require('./database');
 
@@ -34,6 +37,7 @@ const sessionMiddleware = session({
 });
 
 app.use(cors());
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(sessionMiddleware);
@@ -120,9 +124,9 @@ app.post('/api/login', (req, res) => {
 
   try {
     const prepare = getPrepare();
-    const user    = prepare('SELECT * FROM users WHERE username = ? AND password = ?').get(username, password);
+    const user    = prepare('SELECT * FROM users WHERE username = ?').get(username);
 
-    if (!user) {
+    if (!user || !bcrypt.compareSync(password, user.password)) {
       // Notify ShieldWatch of failed login (brute force tracking)
       if (sw && sw.trackLoginFailure) {
         const blocked = sw.trackLoginFailure(req);
@@ -175,7 +179,8 @@ app.post('/api/register', (req, res) => {
   const color   = palette[Math.floor(Math.random() * palette.length)];
 
   try {
-    prepare('INSERT INTO users (username, password, avatar_color) VALUES (?, ?, ?)').run(username.trim(), password, color);
+    const hashedPassword = bcrypt.hashSync(password, 12);
+    prepare('INSERT INTO users (username, password, avatar_color) VALUES (?, ?, ?)').run(username.trim(), hashedPassword, color);
 
     const user = prepare('SELECT * FROM users WHERE username = ?').get(username.trim());
     req.session.userId   = user.id;
@@ -378,10 +383,21 @@ app.get('/api/export', (req, res) => {
 //     With ShieldWatch ON: form-encoded POST to protected endpoint = BLOCKED.
 //     Demo page: /csrf-attack.html
 // ─────────────────────────────────────────────────────────────────────────────
-// FIXED: CSRF Protection (Simplified for demo)
-// In a real app, we would use a CSRF token.
-// Here we ensure it's a JSON request from an authenticated session.
+// CSRF Token endpoint
+app.get('/api/csrf-token', (req, res) => {
+  const token = crypto.randomBytes(24).toString('hex');
+  req.session.csrfToken = token;
+  res.json({ csrfToken: token });
+});
+
+// FIXED: CSRF Protection with double-submit token pattern
 app.post('/api/profile/update', requireAuth, (req, res) => {
+  const clientToken = req.headers['x-csrf-token'];
+  if (!clientToken || clientToken !== req.session.csrfToken) {
+    if (sw) sw.reportThreat(req, 'csrf', { reason: 'Missing or invalid CSRF token' });
+    return res.status(403).json({ ok: false, error: 'CSRF validation failed' });
+  }
+
   const { bio, avatar_color, username } = req.body;
   const prepare = getPrepare();
   

@@ -1,0 +1,19 @@
+{
+  "name": "shieldwatch-collector",
+  "version": "1.0.0",
+  "description": "ShieldWatch UADR — Intelligence Collector & Dashboard",
+  "main": "collector.js",
+  "scripts": {
+    "start": "node collector.js",
+    "dev": "node collector.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.3",
+    "express-session": "^1.19.0",
+    "socket.io": "^4.7.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

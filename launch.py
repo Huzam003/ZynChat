@@ -11,9 +11,22 @@ import signal
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(SCRIPT_DIR)
 
-# --- CONFIGURATION (Set these in your environment or here) ---
+# --- CONFIGURATION ---
 RENDER_API_KEY = os.getenv("RENDER_API_KEY", "rnd_66AXn28xtvkp3bTTiCwu6gqL1ei9")
 SERVICE_ID     = os.getenv("RENDER_SERVICE_ID", "srv-d8146rr7uimc7381bbo0")
+
+def load_env():
+    """Manual .env loader since we can't assume python-dotenv is present"""
+    env_path = os.path.join(SCRIPT_DIR, ".env")
+    if os.path.exists(env_path):
+        with open(env_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, val = line.split("=", 1)
+                    os.environ[key.strip()] = val.strip()
+
+load_env()
 # --------------------------------------------------------------
 
 C_BLU = "\033[94m"
@@ -264,8 +277,15 @@ def launch_local_dashboard():
             
             if addr != current_addr:
                 print(f"{C_YLW}[!] Updating Render with new URL: {addr}{C_RST}")
-                if update_render_env_var("SW_CEREBRO_ADDR", addr):
-                    clear_cache_and_redeploy()
+                update_render_env_var("SW_CEREBRO_ADDR", addr)
+                
+                # Also sync the API Token if it exists in .env
+                api_token = os.getenv("SW_API_TOKEN")
+                if api_token:
+                    print(f"{C_YLW}[*] Syncing SW_API_TOKEN to Render...{C_RST}")
+                    update_render_env_var("SW_API_TOKEN", api_token)
+                
+                clear_cache_and_redeploy()
             else:
                 print(f"{C_GRN}[+] URL matches Render. Skipping redeploy.{C_RST}")
         except: pass
