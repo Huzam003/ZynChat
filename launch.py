@@ -217,6 +217,42 @@ def check_dependencies():
     else:
         print(f"{C_GRN}[+] Dependencies verified.{C_RST}")
 
+def monitor_live_status():
+    """Polls the local collector and prints a live table of active users"""
+    print(f"{C_CYN}[*] Terminal Monitor: ACTIVE{C_RST}")
+    last_count = -1
+    
+    while True:
+        try:
+            res = requests.get("http://localhost:3002/api/live-status", timeout=2)
+            if res.status_code == 200:
+                data = res.json()
+                count = data.get('online_count', 0)
+                users = data.get('online_users', [])
+                
+                if count != last_count:
+                    # Only print if something changed
+                    os.system('clear' if os.name == 'posix' else 'cls')
+                    print(f"\n{C_BLU}{C_BOLD}🛡️  SHIELDWATCH LIVE MONITORING{C_RST}")
+                    print(f"{C_CYN}Dashboard: http://localhost:3002{C_RST}")
+                    print(f"{C_GRN}Active Users: {count}{C_RST} | {C_RED}Events: {data.get('total_events',0)}{C_RST}")
+                    print("-" * 45)
+                    if users:
+                        print(f"{C_BOLD}{'USER':<25} | {'THREAT':<10}{C_RST}")
+                        print("-" * 45)
+                        for u in users:
+                            color = C_RED if u['threat'] > 0 else C_GRN
+                            print(f"{color}{u['session']:<25}{C_RST} | {color}{u['threat']:<10}{C_RST}")
+                    else:
+                        print(f"{C_YLW}No users currently online.{C_RST}")
+                    print("-" * 45)
+                    print(f"{C_DIM}Press Ctrl+C to stop dashboard...{C_RST}")
+                    last_count = count
+            
+            time.sleep(5)
+        except:
+            pass
+
 def launch_local_dashboard():
     check_dependencies()
     print(f"\n{C_BLU}{C_BOLD}🛡️  STARTING AUTOMATED DASHBOARD...{C_RST}")
@@ -225,54 +261,41 @@ def launch_local_dashboard():
     addr, ngrok_proc = start_ngrok_tunnel()
     
     if addr:
-        # 2. Check current Render env var to avoid redundant redeploy
-        print(f"{C_CYN}[*] Checking current Render configuration...{C_RST}")
+        # 2. Check current Render env var
+        print(f"{C_CYN}[*] Checking Render config...{C_RST}")
         headers = {"Authorization": f"Bearer {RENDER_API_KEY}", "Accept": "application/json"}
-        res = requests.get(f"https://api.render.com/v1/services/{SERVICE_ID}/env-vars", headers=headers)
-        
-        current_addr = ""
-        if res.status_code == 200:
-            env_vars = res.json()
-            for ev in env_vars:
-                if ev['envVar']['key'] == 'SW_CEREBRO_ADDR':
-                    current_addr = ev['envVar']['value']
-                    break
-        
-        if addr == current_addr:
-            print(f"{C_GRN}[+] URL matches Render config. Skipping redundant redeploy!{C_RST}")
-        else:
-            print(f"{C_YLW}[!] URL changed. Updating Render environment...{C_RST}")
-            success = update_render_env_var("SW_CEREBRO_ADDR", addr)
-            if success:
-                print(f"{C_YLW}[*] Triggering redeploy to apply new address...{C_RST}")
-                clear_cache_and_redeploy()
+        try:
+            res = requests.get(f"https://api.render.com/v1/services/{SERVICE_ID}/env-vars", headers=headers)
+            current_addr = ""
+            if res.status_code == 200:
+                for ev in res.json():
+                    if ev['envVar']['key'] == 'SW_CEREBRO_ADDR':
+                        current_addr = ev['envVar']['value']
+                        break
+            
+            if addr != current_addr:
+                print(f"{C_YLW}[!] Updating Render with new URL: {addr}{C_RST}")
+                if update_render_env_var("SW_CEREBRO_ADDR", addr):
+                    clear_cache_and_redeploy()
             else:
-                print(f"{C_RED}[-] Failed to update Render environment.{C_RST}")
-    
+                print(f"{C_GRN}[+] URL matches Render. Skipping redeploy.{C_RST}")
+        except: pass
+
     # Kill previous dashboard
     subprocess.run("fuser -k 3002/tcp 2>/dev/null", shell=True)
     
-    print("-" * 60)
-    print(f"{C_GRN}[*] Dashboard: http://localhost:3002{C_RST}")
-    print(f"{C_CYN}[*] Login: shieldwatch-admin-2024{C_RST}")
-    print(f"{C_BLU}[*] Monitoring: {addr if addr else 'Local Only'}{C_RST}")
-    print("-" * 60)
-    
     try:
         # Run collector
-        collector_proc = subprocess.Popen(["node", "shieldwatch/collector.js"])
+        collector_proc = subprocess.Popen(["node", "shieldwatch/collector.js"], stdout=subprocess.DEVNULL)
         
-        print(f"\n{C_BOLD}🚀 System is LIVE. Press Ctrl+C to stop everything.{C_RST}")
+        # Start Terminal Monitor in this thread
+        monitor_live_status()
         
-        while True:
-            time.sleep(1)
-            if collector_proc.poll() is not None:
-                break
     except KeyboardInterrupt:
-        print(f"\n{C_YLW}[*] Shutting down tunnel and dashboard...{C_RST}")
+        print(f"\n{C_YLW}[*] Shutting down...{C_RST}")
         if ngrok_proc: ngrok_proc.terminate()
         collector_proc.terminate()
-        subprocess.run("pkill -f ngrok", shell=True)
+        subprocess.run("pkill -9 ngrok", shell=True)
 
 if __name__ == "__main__":
     os.system('clear' if os.name == 'posix' else 'cls')

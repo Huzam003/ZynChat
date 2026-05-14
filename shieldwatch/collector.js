@@ -449,6 +449,16 @@ setInterval(() => {
 app.get('/api/events',   (_req, res) => res.json(events.slice(0, 100)));
 app.get('/api/attackers',(_req, res) => res.json(Array.from(attackers.values())));
 
+app.get('/api/live-status', (req, res) => {
+  const all = Array.from(attackers.values());
+  const online = all.filter(a => a.isOnline === true);
+  res.json({
+    online_count: online.length,
+    online_users: online.map(a => ({ session: a.session, threat: a.threatScore || 0 })),
+    total_events: events.length
+  });
+});
+
 app.get('/api/stats', (_req, res) => {
   const byType = {};
   events.forEach(e => {
