@@ -113,6 +113,45 @@ def start_ngrok_tunnel():
     print(f"{C_RED}[-] Failed to start ngrok. Please start it manually.{C_RST}")
     return None, None
 
+def wait_for_deployment(deploy_id):
+    if not deploy_id: return
+    
+    print(f"{C_CYN}[*] Monitoring Deployment (ID: {deploy_id})...{C_RST}")
+    headers = {"Authorization": f"Bearer {RENDER_API_KEY}", "Accept": "application/json"}
+    url = f"https://api.render.com/v1/services/{SERVICE_ID}/deploys/{deploy_id}"
+    
+    start_time = time.time()
+    last_status = ""
+    
+    while True:
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                deploy = response.json()
+                status = deploy.get("status", "unknown")
+                
+                if status != last_status:
+                    color = C_YLW if "progress" in status or status == "created" else (C_GRN if status == "live" else C_RED)
+                    print(f"{C_CYN}[Deploy]{C_RST} Status changed to: {color}{status.upper()}{C_RST}")
+                    last_status = status
+                
+                if status == "live":
+                    print(f"\n{C_GRN}{C_BOLD}[✓] DEPLOYMENT SUCCESSFUL! Your app is now LIVE.{C_RST}")
+                    break
+                elif status in ["failed", "canceled", "pre_deploy_failed"]:
+                    print(f"\n{C_RED}{C_BOLD}[×] DEPLOYMENT FAILED! Status: {status.upper()}{C_RST}")
+                    break
+            
+            # Timeout after 10 minutes
+            if time.time() - start_time > 600:
+                print(f"\n{C_RED}[!] Timeout waiting for deployment.{C_RST}")
+                break
+                
+            time.sleep(10) # Poll every 10 seconds
+        except Exception as e:
+            print(f"{C_RED}[-] Error polling status: {e}{C_RST}")
+            time.sleep(10)
+
 def clear_cache_and_redeploy():
     if RENDER_API_KEY == "your_render_api_key_here":
         print(f"{C_RED}[!] Error: Render API Key not set in launch.py{C_RST}")
@@ -132,7 +171,10 @@ def clear_cache_and_redeploy():
     try:
         response = requests.post(url, headers=headers, json=data)
         if response.status_code in [200, 201]:
+            deploy_data = response.json()
+            deploy_id = deploy_data.get("id")
             print(f"{C_GRN}[+] Redeploy triggered successfully! Cache is being cleared.{C_RST}")
+            wait_for_deployment(deploy_id)
         else:
             print(f"{C_RED}[-] Render API Error: {response.status_code} - {response.text}{C_RST}")
     except Exception as e:
