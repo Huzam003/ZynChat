@@ -67,18 +67,21 @@ if __name__ == "__main__":
     if len(sys.argv) >= 2:
         mode = sys.argv[1]
     
-    if mode not in ["standard", "secure"]:
+    if mode not in ["standard", "secure", "dashboard"]:
         print("========================================")
-        print("          ZYNCHAT LAUNCH MENU           ")
+        print("          ZYNCHAT COMMAND CENTER        ")
         print("========================================")
-        print("1. Unprotected Mode (Standard Sync)")
-        print("2. Protected Mode   (ShieldWatch Sync)")
+        print("1. Launch Standard (Local Sync)")
+        print("2. Launch Secure   (Local + Dashboard)")
+        print("3. Access Live Dashboard (Render)")
         print("========================================")
-        choice = input("Select mode [1/2]: ").strip()
+        choice = input("Select action [1/2/3]: ").strip()
         if choice == "1":
             mode = "standard"
         elif choice == "2":
             mode = "secure"
+        elif choice == "3":
+            mode = "dashboard"
         else:
             print("Invalid choice. Exiting.")
             sys.exit(1)
@@ -86,4 +89,14 @@ if __name__ == "__main__":
     if mode == "standard":
         launch_standard()
     elif mode == "secure":
+        print("\n[*] TIP: In Secure Mode, use http://localhost:8080/dashboard/ for the dashboard.")
         launch_secure()
+    elif mode == "dashboard":
+        url = "https://zynchat.onrender.com/dashboard/"
+        print(f"[*] Opening Live Dashboard: {url}")
+        if sys.platform == "linux":
+            subprocess.run(["xdg-open", url])
+        elif sys.platform == "darwin":
+            subprocess.run(["open", url])
+        elif sys.platform == "win32":
+            os.startfile(url)
