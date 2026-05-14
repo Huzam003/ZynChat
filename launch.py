@@ -5,6 +5,10 @@ import subprocess
 import time
 import signal
 
+# Ensure we are running in the script's directory
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+os.chdir(SCRIPT_DIR)
+
 def cleanup_ports():
     print("[*] Cleaning up ports (3001, 3002, 8080)...")
     subprocess.run("fuser -k 3001/tcp 3002/tcp 8080/tcp 2>/dev/null", shell=True)
