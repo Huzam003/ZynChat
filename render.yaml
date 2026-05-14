@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: zynchat
+    runtime: docker
+    plan: free
+    envVars:
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SW_ENABLED
+        value: "true"
+      - key: SW_CEREBRO_ADDR
+        value: "PASTE_YOUR_NGROK_URL_HERE"
+      - key: SW_APP_ID
+        value: "zynchat-prod"
+      - key: SW_LOG_ONLY
+        value: "false"
