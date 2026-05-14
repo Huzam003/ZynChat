@@ -109,11 +109,16 @@ function loadState() {
   try {
     const data = JSON.parse(fs.readFileSync(STATE_FILE));
     if (data.events) events.push(...data.events);
-    if (data.attackers) data.attackers.forEach(([k, v]) => attackers.set(k, v));
+    if (data.attackers) {
+        data.attackers.forEach(([k, v]) => {
+            v.isOnline = false; // [IMPORTANT] Reset status on startup
+            attackers.set(k, v);
+        });
+    }
     if (data.blockedIPs) data.blockedIPs.forEach(ip => blockedIPs.add(ip));
     if (data.blockedFingerprints) data.blockedFingerprints.forEach(fp => blockedFingerprints.add(fp));
     if (data.fingerprintIndex) data.fingerprintIndex.forEach(([k, v]) => fingerprintIndex.set(k, v));
-    console.log(`[State] Restored: ${events.length} events, ${attackers.size} attackers`);
+    console.log(`[State] Restored: ${events.length} events, ${attackers.size} attackers (All reset to offline)`);
   } catch (e) {
     console.error("[State] Error loading:", e.message);
   }
