@@ -162,7 +162,7 @@ function renderList(targetId, list, emptyMsg) {
            onclick="selectAttacker(${JSON.stringify(a).replace(/"/g,'&quot;')})">
         <div class="attacker-dot" style="background:${dotColor}"></div>
         <span class="attacker-icon">${icon}</span>
-        <span class="attacker-name">${escHtml(a.session)}</span>
+        <span class="attacker-name">${a.session || 'Anonymous'}</span>
         ${hasThreat ? `<span class="attacker-score">${a.threatScore}</span>` : ''}
       </div>`;
   }).join('');
