@@ -396,7 +396,7 @@ app.get('/api/stats', (_req, res) => {
     blocked:   events.filter(e => e.verdict === 'BLOCKED').length,
     decoys:    events.filter(e => e.verdict === 'DECOY').length,
     logged:    events.filter(e => e.verdict === 'LOGGED').length,
-    attackers: attackers.size,
+    attackers: Array.from(attackers.values()).filter(a => a.threatScore > 0).length,
     byType
   });
 });

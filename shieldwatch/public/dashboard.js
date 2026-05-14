@@ -109,7 +109,8 @@ async function fetchStats() {
 }
 
 function updateCounters(events, attackers) {
-  animateNum('cntAttackers', attackers.length);
+  const attackerCount = attackers.filter(a => a.threatScore > 0).length;
+  animateNum('cntAttackers', attackerCount);
   fetchStats();
 }
 
@@ -127,8 +128,8 @@ function animateNum(id, val) {
 
 // ─── Render Left Panel ────────────────────────────────────────────────────────
 function renderLeft(attackers) {
-  const users    = attackers.filter(a => (a.threatScore || 0) < 15);
-  const flagged  = attackers.filter(a => (a.threatScore || 0) >= 15);
+  const users    = attackers.filter(a => (a.threatScore || 0) === 0);
+  const flagged  = attackers.filter(a => (a.threatScore || 0) > 0);
 
   renderList('userList',     users,   'No active users');
   renderList('attackerList', flagged, 'No attackers identified');
