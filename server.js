@@ -119,9 +119,8 @@ app.post('/api/login', (req, res) => {
   }
 
   try {
-    // !! INTENTIONALLY VULNERABLE — DO NOT USE IN PRODUCTION !!
-    const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${password}'`;
-    const user  = execVulnerable(query);
+    const prepare = getPrepare();
+    const user    = prepare('SELECT * FROM users WHERE username = ? AND password = ?').get(username, password);
 
     if (!user) {
       // Notify ShieldWatch of failed login (brute force tracking)
@@ -261,8 +260,17 @@ app.get('/api/file', requireAuth, (req, res) => {
   const filePath = req.query.path;
   if (!filePath) return res.json({ ok: false, error: 'No path specified.' });
 
-  // !! INTENTIONALLY VULNERABLE — no path.resolve jail check !!
-  const fullPath = path.join(__dirname, 'uploads', filePath);
+  // FIXED: Path Traversal Protection
+  // 1. Normalize the path
+  // 2. Resolve it relative to the uploads directory
+  // 3. Ensure the resolved path is still within the uploads directory
+  const uploadsDir = path.join(__dirname, 'uploads');
+  const fullPath   = path.resolve(uploadsDir, filePath);
+
+  if (!fullPath.startsWith(uploadsDir)) {
+    if (sw) sw.reportThreat(req, 'path_traversal', { path: filePath });
+    return res.status(403).json({ ok: false, error: 'Access denied: Security violation.' });
+  }
 
   try {
     const content = fs.readFileSync(fullPath, 'utf8');
@@ -359,9 +367,13 @@ app.get('/api/export', (req, res) => {
 //     With ShieldWatch ON: form-encoded POST to protected endpoint = BLOCKED.
 //     Demo page: /csrf-attack.html
 // ─────────────────────────────────────────────────────────────────────────────
-app.post('/api/profile/update', requireAuth, express.urlencoded({ extended: false }), (req, res) => {
+// FIXED: CSRF Protection (Simplified for demo)
+// In a real app, we would use a CSRF token.
+// Here we ensure it's a JSON request from an authenticated session.
+app.post('/api/profile/update', requireAuth, (req, res) => {
   const { bio, avatar_color, username } = req.body;
   const prepare = getPrepare();
+  
   if (username && username.length >= 2 && username.length <= 30) {
     prepare('UPDATE users SET bio = ?, avatar_color = ?, username = ? WHERE id = ?')
       .run(bio || '', avatar_color || '#3b82f6', username, req.session.userId);
@@ -380,12 +392,12 @@ app.post('/api/profile/update', requireAuth, express.urlencoded({ extended: fals
 //     No auth check — any user ID returns the full DB record including password.
 //     Demo: fetch('/api/user/1') → gets admin's plain-text password.
 // ─────────────────────────────────────────────────────────────────────────────
-app.get('/api/user/:id', (req, res) => {
-  // !! INTENTIONALLY VULNERABLE — no auth, no ownership check !!
+// FIXED: IDOR Protection
+// Now requires authentication and only returns non-sensitive fields.
+app.get('/api/user/:id', requireAuth, (req, res) => {
   const prepare = getPrepare();
-  const user = prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+  const user = prepare('SELECT id, username, role, avatar_color, bio FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ ok: false, error: 'User not found' });
-  // Returns everything including the password field
   res.json({ ok: true, user });
 });
 
@@ -395,34 +407,8 @@ app.get('/api/user/:id', (req, res) => {
 //     POST /api/session/fix → attacker pre-sets a known session ID before login
 //     Attack: attacker plants session ID → victim logs in → attacker now owns session
 // ─────────────────────────────────────────────────────────────────────────────
-app.get('/api/session/id', (req, res) => {
-  // !! VULNERABLE: exposes session ID over HTTP !!
-  res.json({
-    ok:        true,
-    sessionId: req.sessionID,
-    username:  req.session.username || null,
-    role:      req.session.role     || null,
-    userId:    req.session.userId   || null,
-    _warning:  'This endpoint should NOT exist in production!'
-  });
-});
-
-app.post('/api/session/fix', (req, res) => {
-  // !! VULNERABLE: accepts attacker-controlled session ID !!
-  const { sessionId } = req.body;
-  if (!sessionId) return res.json({ ok: false, error: 'sessionId required' });
-  // Store attacker's desired session ID in the session data so it can be retrieved
-  req.session.fixedId = sessionId;
-  req.session.save(() => {
-    res.json({
-      ok:          true,
-      message:     'Session fixation successful.',
-      attackerSet: sessionId,
-      activeSid:   req.sessionID,
-      _note:       'Attacker now knows victim\'s session ID. When victim logs in, attacker can hijack the session using this SID.'
-    });
-  });
-});
+// FIXED: Session Fixation Removed
+// These endpoints were intentionally vulnerable and have been deleted for security.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ⚠️  VULNERABILITY #7: COMMAND INJECTION
@@ -436,7 +422,13 @@ app.post('/api/tools/ping', requireAuth, (req, res) => {
   const { host } = req.body;
   if (!host) return res.json({ ok: false, error: 'host is required' });
 
-  // !! INTENTIONALLY VULNERABLE — no sanitisation of host parameter !!
+  // FIXED: Command Injection Protection
+  // Strict regex for valid IP or hostname to prevent any shell injection characters
+  if (!/^[a-zA-Z0-9\.-]+$/.test(host)) {
+    if (sw) sw.reportThreat(req, 'cmd_injection', { input: host });
+    return res.status(400).json({ ok: false, error: 'Invalid hostname format.' });
+  }
+
   const cmd = process.platform === 'win32'
     ? `ping -n 1 ${host}`
     : `ping -c 1 ${host}`;
@@ -446,8 +438,7 @@ app.post('/api/tools/ping', requireAuth, (req, res) => {
       ok:     true,
       host,
       cmd,
-      output: stdout || stderr || err?.message || 'No output',
-      _warning: 'This endpoint is intentionally vulnerable to command injection!'
+      output: stdout || stderr || err?.message || 'No output'
     });
   });
 });

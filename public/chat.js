@@ -245,10 +245,15 @@ function renderOnlineUsers() {
   onlineListEl.innerHTML = '';
   unique.forEach(u => {
     const li = document.createElement('li');
-    li.className = 'online-item';
+    const isMe = (u.username === currentUser.username);
+    li.className = 'online-user' + (isMe ? ' active' : ''); 
     li.innerHTML = `
       <div class="online-avatar" style="background:${escapeHTML(u.avatar_color || '#3b82f6')}">${u.username[0].toUpperCase()}</div>
-      <span class="online-name">${escapeHTML(u.username)}</span>
+      <div class="online-info">
+        <span class="online-name">${escapeHTML(u.username)}</span>
+        <span class="online-status-text">${isMe ? 'You' : 'Available'}</span>
+      </div>
+      <div class="user-status status-online"></div>
     `;
     li.addEventListener('click', () => showProfile(u.username, u.avatar_color, u.role, u.bio));
     onlineListEl.appendChild(li);
@@ -374,13 +379,13 @@ async function doSearch() {
 
 function renderSearchResults(data) {
   if (!data.results || data.results.length === 0) {
-    // !! VULNERABLE: data.query inserted via innerHTML — reflects raw server response !!
-    searchResults.innerHTML = `<div class="search-no-results">No results for "${data.query}"</div>`;
+    // FIXED: data.query sanitized via escapeHTML
+    searchResults.innerHTML = `<div class="search-no-results">No results for "${escapeHTML(data.query)}"</div>`;
     return;
   }
 
-  // !! VULNERABLE: data.query in innerHTML below !!
-  let html = `<div style="padding:6px 10px;font-size:11px;color:var(--text-muted)">Results for "${data.query}"</div>`;
+  // FIXED: data.query sanitized via escapeHTML
+  let html = `<div style="padding:6px 10px;font-size:11px;color:var(--text-muted)">Results for "${escapeHTML(data.query)}"</div>`;
   data.results.forEach(msg => {
     html += `
       <div class="search-result-item" onclick="jumpToMsg(${msg.id})">
