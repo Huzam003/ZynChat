@@ -5,19 +5,29 @@ import subprocess
 import time
 import signal
 
+# ─── ZynChat Unified Command Center ───────────────────────────────────────────
 # Ensure we are running in the script's directory
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(SCRIPT_DIR)
 
+# ANSI Colors
+C_BLU = "\033[94m"
+C_CYN = "\033[96m"
+C_GRN = "\033[92m"
+C_YLW = "\033[93m"
+C_RED = "\033[91m"
+C_RST = "\033[0m"
+C_BOLD = "\033[1m"
+
 def cleanup_ports():
-    print("[*] Cleaning up ports (3001, 3002, 8080)...")
+    print(f"{C_YLW}[*] Cleaning up ports (3001, 3002, 8080)...{C_RST}")
     subprocess.run("fuser -k 3001/tcp 3002/tcp 8080/tcp 2>/dev/null", shell=True)
     time.sleep(1)
 
 def set_env(mode):
     env_path = ".env"
     if not os.path.exists(env_path):
-        print(f"[-] {env_path} not found!")
+        print(f"{C_RED}[-] {env_path} not found!{C_RST}")
         return
 
     with open(env_path, "r") as f:
@@ -31,90 +41,83 @@ def set_env(mode):
                 f.write(line)
 
 def launch_standard():
-    print("🔓 Starting ZynChat STANDARD Environment (Unprotected)...")
+    print(f"\n{C_CYN}{C_BOLD}🔓 STARTING ZYNCHAT STANDARD (Unprotected Mode)...{C_RST}")
     cleanup_ports()
     set_env("standard")
-    print("🚀 ZynChat launching on http://localhost:3001")
+    print(f"{C_GRN}🚀 ZynChat active on http://localhost:3001{C_RST}")
     try:
         subprocess.run(["node", "server.js"])
     except KeyboardInterrupt:
-        print("\n[*] Shutting down...")
+        print(f"\n{C_YLW}[*] Shutting down...{C_RST}")
 
 def launch_secure():
-    print("🛡️  Starting ZynChat SECURE Environment...")
+    print(f"\n{C_BLU}{C_BOLD}🛡️  STARTING ZYNCHAT SECURE (ShieldWatch Protected)...{C_RST}")
     cleanup_ports()
     set_env("secure")
     
-    print("[*] Initializing ShieldWatch Collector...")
+    print(f"{C_YLW}[*] Initializing ShieldWatch Intelligence Collector...{C_RST}")
     collector_proc = subprocess.Popen(["node", "shieldwatch/collector.js"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(2)
     
-    print("[*] Launching Nginx Gateway...")
+    print(f"{C_YLW}[*] Launching Nginx Gateway Architecture...{C_RST}")
     nginx_conf = os.path.abspath("nginx/zynchat.conf")
     subprocess.run(["nginx", "-c", nginx_conf])
     
-    print("🚀 ZynChat Secure Mode launching on http://localhost:3001 (Gateway via Nginx/ShieldWatch)")
+    print(f"\n{C_GRN}🚀 ZynChat Secure Mode active via Nginx Gateway!{C_RST}")
+    print(f"{C_CYN}   - Chat App:  http://localhost:8080/{C_RST}")
+    print(f"{C_CYN}   - Dashboard: http://localhost:8080/dashboard/{C_RST}")
+    
     try:
         subprocess.run(["node", "server.js"])
     except KeyboardInterrupt:
-        print("\n[*] Shutting down...")
+        print(f"\n{C_YLW}[*] Shutting down...{C_RST}")
     finally:
-        print("[*] Terminating ShieldWatch Collector...")
+        print(f"{C_YLW}[*] Terminating ShieldWatch processes...{C_RST}")
         collector_proc.terminate()
 
 def launch_collector_only():
-    print("🛡️  Starting LOCAL ShieldWatch Dashboard Only...")
+    print(f"\n{C_BLU}{C_BOLD}🛡️  STARTING LOCAL DASHBOARD (Remote Monitoring Mode)...{C_RST}")
     cleanup_ports()
-    print("[*] Initializing local collector on port 3002...")
+    print(f"{C_YLW}[!] IMPORTANT: To receive feeds from Render to this local dashboard:{C_RST}")
+    print(f"    1. Run '{C_CYN}ngrok http 3002{C_RST}' to get a public URL.")
+    print(f"    2. Set {C_CYN}SW_CEREBRO_ADDR=<ngrok_url>{C_RST} in Render Environment Variables.")
+    print("-" * 70)
+    print(f"{C_GRN}[*] Local Collector starting on port 3002...{C_RST}\n")
     try:
         subprocess.run(["node", "shieldwatch/collector.js"])
     except KeyboardInterrupt:
-        print("\n[*] Shutting down...")
+        print(f"\n{C_YLW}[*] Shutting down...{C_RST}")
+
+def open_render_dashboard():
+    url = "https://zynchat.onrender.com/dashboard/"
+    print(f"{C_CYN}[*] Opening Remote Live Dashboard: {url}{C_RST}")
+    if sys.platform == "linux":
+        subprocess.run(["xdg-open", url])
+    elif sys.platform == "darwin":
+        subprocess.run(["open", url])
+    elif sys.platform == "win32":
+        os.startfile(url)
 
 if __name__ == "__main__":
-    mode = None
-    if len(sys.argv) >= 2:
-        mode = sys.argv[1]
+    os.system('clear' if os.name == 'posix' else 'cls')
+    print(f"{C_BLU}{C_BOLD}=================================================={C_RST}")
+    print(f"{C_CYN}{C_BOLD}             ZYNCHAT COMMAND CENTER               {C_RST}")
+    print(f"{C_BLU}{C_BOLD}=================================================={C_RST}")
+    print(f"{C_CYN}1.{C_RST} {C_BOLD}LOCAL:{C_RST} Launch Standard (Unprotected)")
+    print(f"{C_CYN}2.{C_RST} {C_BOLD}LOCAL:{C_RST} Launch Secure   (RASP + Nginx)")
+    print(f"{C_CYN}3.{C_RST} {C_BOLD}LOCAL:{C_RST} Launch Dashboard Only (Remote Monitor)")
+    print(f"{C_CYN}4.{C_RST} {C_BOLD}REMOTE:{C_RST} Access Live Dashboard (Render)")
+    print(f"{C_BLU}=================================================={C_RST}")
     
-    if mode not in ["standard", "secure", "dashboard", "collector"]:
-        print("========================================")
-        print("          ZYNCHAT COMMAND CENTER        ")
-        print("========================================")
-        print("1. Launch Standard (Local Sync)")
-        print("2. Launch Secure   (Local + Dashboard)")
-        print("3. Access Live Dashboard (Render)")
-        print("4. Launch Local Dashboard Only (Remote Feeds)")
-        print("========================================")
-        choice = input("Select action [1/2/3/4]: ").strip()
-        if choice == "1":
-            mode = "standard"
-        elif choice == "2":
-            mode = "secure"
-        elif choice == "3":
-            mode = "dashboard"
-        elif choice == "4":
-            mode = "collector"
-        else:
-            print("Invalid choice. Exiting.")
-            sys.exit(1)
-            
-    if mode == "standard":
+    choice = input(f"{C_BOLD}Select Operation [1-4]: {C_RST}").strip()
+    
+    if choice == "1":
         launch_standard()
-    elif mode == "secure":
-        print("\n[*] TIP: In Secure Mode, use http://localhost:8080/dashboard/ for the dashboard.")
+    elif choice == "2":
         launch_secure()
-    elif mode == "dashboard":
-        url = "https://zynchat.onrender.com/dashboard/"
-        print(f"[*] Opening Live Dashboard: {url}")
-        if sys.platform == "linux":
-            subprocess.run(["xdg-open", url])
-        elif sys.platform == "darwin":
-            subprocess.run(["open", url])
-        elif sys.platform == "win32":
-            os.startfile(url)
-    elif mode == "collector":
-        print("\n[!] IMPORTANT: To receive feeds from Render to this local dashboard:")
-        print("    1. Run 'ngrok http 3002' to get a public URL.")
-        print("    2. Set SW_CEREBRO_ADDR=<ngrok_url> in Render Environment Variables.")
-        print("----------------------------------------------------------------------\n")
+    elif choice == "3":
         launch_collector_only()
+    elif choice == "4":
+        open_render_dashboard()
+    else:
+        print(f"{C_RED}[!] Invalid choice. Exiting.{C_RST}")
