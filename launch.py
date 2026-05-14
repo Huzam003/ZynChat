@@ -62,26 +62,38 @@ def launch_secure():
         print("[*] Terminating ShieldWatch Collector...")
         collector_proc.terminate()
 
+def launch_collector_only():
+    print("🛡️  Starting LOCAL ShieldWatch Dashboard Only...")
+    cleanup_ports()
+    print("[*] Initializing local collector on port 3002...")
+    try:
+        subprocess.run(["node", "shieldwatch/collector.js"])
+    except KeyboardInterrupt:
+        print("\n[*] Shutting down...")
+
 if __name__ == "__main__":
     mode = None
     if len(sys.argv) >= 2:
         mode = sys.argv[1]
     
-    if mode not in ["standard", "secure", "dashboard"]:
+    if mode not in ["standard", "secure", "dashboard", "collector"]:
         print("========================================")
         print("          ZYNCHAT COMMAND CENTER        ")
         print("========================================")
         print("1. Launch Standard (Local Sync)")
         print("2. Launch Secure   (Local + Dashboard)")
         print("3. Access Live Dashboard (Render)")
+        print("4. Launch Local Dashboard Only (Remote Feeds)")
         print("========================================")
-        choice = input("Select action [1/2/3]: ").strip()
+        choice = input("Select action [1/2/3/4]: ").strip()
         if choice == "1":
             mode = "standard"
         elif choice == "2":
             mode = "secure"
         elif choice == "3":
             mode = "dashboard"
+        elif choice == "4":
+            mode = "collector"
         else:
             print("Invalid choice. Exiting.")
             sys.exit(1)
@@ -100,3 +112,9 @@ if __name__ == "__main__":
             subprocess.run(["open", url])
         elif sys.platform == "win32":
             os.startfile(url)
+    elif mode == "collector":
+        print("\n[!] IMPORTANT: To receive feeds from Render to this local dashboard:")
+        print("    1. Run 'ngrok http 3002' to get a public URL.")
+        print("    2. Set SW_CEREBRO_ADDR=<ngrok_url> in Render Environment Variables.")
+        print("----------------------------------------------------------------------\n")
+        launch_collector_only()
