@@ -82,6 +82,7 @@ app.use(express.static(path.join(__dirname, 'public', 'login-assets'), { index: 
 // ─── In-Memory Store ──────────────────────────────────────────────────────────
 const events    = [];           // all threat events, newest first
 const attackers = new Map();    // sessionKey → attacker profile
+let lastSyncTime = Date.now(); // Track last time we heard from the sensor
 const geoCache  = new Map();    // ip → geo data
 const blockedIPs          = new Set();   // manually blocked IPs
 const blockedFingerprints = new Set();   // blocked browser fingerprint hashes
@@ -386,11 +387,13 @@ app.post('/api/active-users', requireApiToken, (req, res) => {
   const { sessions } = req.body;
   if (!Array.isArray(sessions)) return res.json({ ok: false });
 
-  console.log(`[Sync] Received ${sessions.length} active sessions from sensor.`);
+  lastSyncTime = Date.now();
+  console.log(`[Sync] Received pulse (${sessions.length} users).`);
+  
   const activeSet = new Set(sessions);
   let changed = false;
 
-  // Mark existing profiles
+  // 1. Update existing profiles
   for (const [sid, a] of attackers) {
     const isOnlineNow = activeSet.has(sid);
     if (a.isOnline !== isOnlineNow) {
@@ -400,7 +403,7 @@ app.post('/api/active-users', requireApiToken, (req, res) => {
     }
   }
 
-  // Add new profiles for online users
+  // 2. Add new online users
   for (const session of sessions) {
     if (!attackers.has(session)) {
       console.log(`[Sync] New user detected online: ${session}`);
@@ -416,6 +419,24 @@ app.post('/api/active-users', requireApiToken, (req, res) => {
   
   res.json({ ok: true });
 });
+
+// Auto-cleanup: If no sync pulse for 65s, mark everyone offline
+setInterval(() => {
+    if (Date.now() - lastSyncTime > 65000) {
+        let changed = false;
+        for (const a of attackers.values()) {
+            if (a.isOnline) {
+                console.log(`[Cleanup] No pulse for 60s. Marking ${a.session} offline.`);
+                a.isOnline = false;
+                changed = true;
+            }
+        }
+        if (changed) {
+            io.emit('attackers_update', Array.from(attackers.values()));
+            saveState();
+        }
+    }
+}, 30000);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REST — dashboard data

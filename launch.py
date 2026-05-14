@@ -225,14 +225,29 @@ def launch_local_dashboard():
     addr, ngrok_proc = start_ngrok_tunnel()
     
     if addr:
-        # 2. Update Render
-        success = update_render_env_var("SW_CEREBRO_ADDR", addr)
-        if success:
-            print(f"{C_GRN}[+] Render updated with new tunnel address.{C_RST}")
-            print(f"{C_YLW}[*] Triggering redeploy to apply new address...{C_RST}")
-            clear_cache_and_redeploy()
+        # 2. Check current Render env var to avoid redundant redeploy
+        print(f"{C_CYN}[*] Checking current Render configuration...{C_RST}")
+        headers = {"Authorization": f"Bearer {RENDER_API_KEY}", "Accept": "application/json"}
+        res = requests.get(f"https://api.render.com/v1/services/{SERVICE_ID}/env-vars", headers=headers)
+        
+        current_addr = ""
+        if res.status_code == 200:
+            env_vars = res.json()
+            for ev in env_vars:
+                if ev['envVar']['key'] == 'SW_CEREBRO_ADDR':
+                    current_addr = ev['envVar']['value']
+                    break
+        
+        if addr == current_addr:
+            print(f"{C_GRN}[+] URL matches Render config. Skipping redundant redeploy!{C_RST}")
         else:
-            print(f"{C_RED}[-] Failed to update Render environment.{C_RST}")
+            print(f"{C_YLW}[!] URL changed. Updating Render environment...{C_RST}")
+            success = update_render_env_var("SW_CEREBRO_ADDR", addr)
+            if success:
+                print(f"{C_YLW}[*] Triggering redeploy to apply new address...{C_RST}")
+                clear_cache_and_redeploy()
+            else:
+                print(f"{C_RED}[-] Failed to update Render environment.{C_RST}")
     
     # Kill previous dashboard
     subprocess.run("fuser -k 3002/tcp 2>/dev/null", shell=True)
