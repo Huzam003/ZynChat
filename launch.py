@@ -218,40 +218,29 @@ def check_dependencies():
         print(f"{C_GRN}[+] Dependencies verified.{C_RST}")
 
 def monitor_live_status():
-    """Polls the local collector and prints a live table of active users"""
-    print(f"{C_CYN}[*] Terminal Monitor: ACTIVE{C_RST}")
-    last_count = -1
+    """Polls the local collector and prints log lines when status changes"""
+    print(f"{C_CYN}[*] Terminal Monitor: ACTIVE (Waiting for pulses...){C_RST}")
+    last_users = set()
     
     while True:
         try:
             res = requests.get("http://localhost:3002/api/live-status", timeout=2)
             if res.status_code == 200:
                 data = res.json()
-                count = data.get('online_count', 0)
-                users = data.get('online_users', [])
+                current_users = {u['session'] for u in data.get('online_users', [])}
                 
-                if count != last_count:
-                    # Only print if something changed
-                    os.system('clear' if os.name == 'posix' else 'cls')
-                    print(f"\n{C_BLU}{C_BOLD}🛡️  SHIELDWATCH LIVE MONITORING{C_RST}")
-                    print(f"{C_CYN}Dashboard: http://localhost:3002{C_RST}")
-                    print(f"{C_GRN}Active Users: {count}{C_RST} | {C_RED}Events: {data.get('total_events',0)}{C_RST}")
-                    print("-" * 45)
-                    if users:
-                        print(f"{C_BOLD}{'USER':<25} | {'THREAT':<10}{C_RST}")
-                        print("-" * 45)
-                        for u in users:
-                            color = C_RED if u['threat'] > 0 else C_GRN
-                            print(f"{color}{u['session']:<25}{C_RST} | {color}{u['threat']:<10}{C_RST}")
-                    else:
-                        print(f"{C_YLW}No users currently online.{C_RST}")
-                    print("-" * 45)
-                    print(f"{C_DIM}Press Ctrl+C to stop dashboard...{C_RST}")
-                    last_count = count
-            
+                # Detect Joins
+                for user in current_users - last_users:
+                    print(f"{C_GRN}[+] User Online: {user}{C_RST}")
+                
+                # Detect Leaves
+                for user in last_users - current_users:
+                    print(f"{C_RED}[-] User Offline: {user}{C_RST}")
+                
+                last_users = current_users
             time.sleep(5)
         except:
-            pass
+            time.sleep(5)
 
 def launch_local_dashboard():
     check_dependencies()
@@ -284,11 +273,17 @@ def launch_local_dashboard():
     # Kill previous dashboard
     subprocess.run("fuser -k 3002/tcp 2>/dev/null", shell=True)
     
+    print("-" * 60)
+    print(f"{C_GRN}[*] Dashboard: http://localhost:3002{C_RST}")
+    print(f"{C_CYN}[*] Login: shieldwatch-admin-2024{C_RST}")
+    print(f"{C_BLU}[*] Monitoring: {addr if addr else 'Local Only'}{C_RST}")
+    print("-" * 60)
+    
     try:
-        # Run collector
-        collector_proc = subprocess.Popen(["node", "shieldwatch/collector.js"], stdout=subprocess.DEVNULL)
+        # Run collector (Show logs)
+        collector_proc = subprocess.Popen(["node", "shieldwatch/collector.js"])
         
-        # Start Terminal Monitor in this thread
+        # Start Scrolling Monitor in this thread
         monitor_live_status()
         
     except KeyboardInterrupt:
