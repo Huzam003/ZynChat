@@ -193,7 +193,18 @@ app.post('/api/register', (req, res) => {
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 app.post('/api/logout', (req, res) => {
+  const username = req.session.username;
   req.session.destroy();
+  
+  // Immediately broadcast that this user is gone
+  if (username) {
+    console.log(`[Logout] User ${username} logged out.`);
+    // We need to wait a tiny bit for the session to clear
+    setTimeout(() => {
+        if (typeof broadcastOnlineUsers === 'function') broadcastOnlineUsers();
+    }, 500);
+  }
+  
   res.json({ ok: true });
 });
 
@@ -558,10 +569,14 @@ io.on('connection', (socket) => {
 });
 
 function broadcastOnlineUsers() {
-  const usersArray = Array.from(onlineUsers.values());
-  io.emit('users_update', usersArray);
+  // Get unique usernames of currently connected sockets
+  const usernames = Array.from(onlineUsers.values()).map(u => u.username);
+  const uniqueUsers = [...new Set(usernames)];
+  
+  io.emit('users_update', uniqueUsers);
+  
   if (sw && sw.syncActiveUsers) {
-    sw.syncActiveUsers(usersArray);
+    sw.syncActiveUsers(uniqueUsers);
   }
 }
 
