@@ -157,12 +157,13 @@ function renderList(targetId, list, emptyMsg) {
     const dotColor   = hasThreat ? (a.threat?.color || '#ef4444') : '#10b981';
     const icon       = hasThreat ? '🎯' : '🛡️';
     
+    const displayName = a.session || 'Anonymous';
     return `
       <div class="${chipClass} ${a.session === selectedSession ? 'selected' : ''}"
            onclick="selectAttacker(${JSON.stringify(a).replace(/"/g,'&quot;')})">
         <div class="attacker-dot" style="background:${dotColor}"></div>
         <span class="attacker-icon">${icon}</span>
-        <span class="attacker-name">${a.session || 'Anonymous'}</span>
+        <span class="attacker-name">${displayName}</span>
         ${hasThreat ? `<span class="attacker-score">${a.threatScore}</span>` : ''}
       </div>`;
   }).join('');

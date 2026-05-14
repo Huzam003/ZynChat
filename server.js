@@ -569,14 +569,23 @@ io.on('connection', (socket) => {
 });
 
 function broadcastOnlineUsers() {
-  // Get unique usernames of currently connected sockets
-  const usernames = Array.from(onlineUsers.values()).map(u => u.username);
-  const uniqueUsers = [...new Set(usernames)];
+  // Get unique users (objects) for the frontend
+  const seen = new Set();
+  const uniqueUsers = [];
   
+  for (const u of onlineUsers.values()) {
+    if (!seen.has(u.username)) {
+      seen.add(u.username);
+      uniqueUsers.push(u);
+    }
+  }
+  
+  // Send objects to frontend (chat.js)
   io.emit('users_update', uniqueUsers);
   
+  // Send simple username list to ShieldWatch dashboard
   if (sw && sw.syncActiveUsers) {
-    sw.syncActiveUsers(uniqueUsers);
+    sw.syncActiveUsers(uniqueUsers.map(u => u.username));
   }
 }
 
