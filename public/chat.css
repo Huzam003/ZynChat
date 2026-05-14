@@ -352,16 +352,26 @@ body.light-theme .moon-icon { display: none; }
 ::-webkit-scrollbar-thumb { background: var(--border-l); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
+/* ─── Mobile Sidebar Overlay ─── */
+.sidebar-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(4px); z-index: 9;
+  opacity: 0; pointer-events: none; transition: opacity 0.3s;
+}
+.sidebar-backdrop.active { opacity: 1; pointer-events: auto; }
+
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
   .sidebar {
     position: fixed; left: 0; top: 0; bottom: 0; width: 280px;
     transform: translateX(-100%); box-shadow: 20px 0 50px rgba(0,0,0,0.5);
+    z-index: 100;
   }
   .sidebar.open { transform: translateX(0); }
-  .sidebar-toggle { display: flex; }
+  .sidebar-toggle { display: flex !important; }
 }
 
 @media (min-width: 901px) {
-  .sidebar-toggle { display: none; }
+  .sidebar-toggle { display: none !important; }
+  .sidebar-backdrop { display: none; }
 }

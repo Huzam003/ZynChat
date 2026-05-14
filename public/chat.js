@@ -179,6 +179,7 @@ async function joinRoom(room) {
 
   // Tell server
   socket.emit('join_room', room.id);
+  checkMobileClose();
 
   // Load history
   try {
@@ -335,14 +336,23 @@ function scrollToBottom(smooth = true) {
 }
 
 // ─── Sidebar Toggle (mobile) ──────────────────────────────────────────────────
-$('sidebarToggle').addEventListener('click', () => {
-  $('sidebar').classList.toggle('open');
+function toggleSidebar(force) {
+  const isOpen = $('sidebar').classList.toggle('open', force);
+  $('sidebarBackdrop').classList.toggle('active', isOpen);
+}
+
+$('sidebarToggle').addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleSidebar();
 });
 
-// Click outside sidebar to close on mobile
-$('main').addEventListener('click', () => {
-  if (window.innerWidth <= 680) $('sidebar').classList.remove('open');
-});
+// Click backdrop to close
+$('sidebarBackdrop').addEventListener('click', () => toggleSidebar(false));
+
+// Auto-close on mobile when room changes
+function checkMobileClose() {
+  if (window.innerWidth <= 900) toggleSidebar(false);
+}
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 $('logoutBtn').addEventListener('click', async () => {
