@@ -12,6 +12,8 @@
     "build:linux": "electron-builder --linux AppImage"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.18.3",
@@ -21,6 +23,7 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.3.4",
     "electron": "^42.0.1",
     "electron-builder": "^26.8.1"
   },

@@ -1,0 +1,69 @@
+
+🛡️  ShieldWatch Collector  →  http://localhost:3002
+    Dashboard              →  http://localhost:3002/
+    Events API             →  POST http://localhost:3002/api/event
+    Fingerprint API        →  POST http://localhost:3002/api/fingerprint
+
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:alice | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:sffsfs | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:alice | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:sffsfs | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:alice | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:sffsfs | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:zdxfsdfsf | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:esfsfsf | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:esfsfsf | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:adadad | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:admin | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:admin | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:admin | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:adadad | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:adadad | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:admin | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:admin | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:admin | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:adadad | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:admin | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:anon@59.103.195.78 | Android 16 | 491x1119
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:mobile | Android 16 | 491x1119
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:admin | Linux | 1920x1080
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[VPN] 🔄 Device 24ba5665… IP changed 127.0.0.1 → 59.103.195.78 (session: "admin" → "anon@59.103.195.78")
+[Fingerprint] session:anon@59.103.195.78 | Linux | 1920x1080 | ⚠️ VPN ROTATION
+[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Fingerprint] session:linux | Linux | 1920x1080

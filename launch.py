@@ -3,14 +3,17 @@ import os
 import sys
 import subprocess
 import time
-import signal
+import requests
 
-# ─── ZynChat Unified Command Center ───────────────────────────────────────────
-# Ensure we are running in the script's directory
+# ─── ZynChat Remote Server Controller ──────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(SCRIPT_DIR)
 
-# ANSI Colors
+# --- CONFIGURATION (Set these in your environment or here) ---
+RENDER_API_KEY = os.getenv("RENDER_API_KEY", "your_render_api_key_here")
+SERVICE_ID     = os.getenv("RENDER_SERVICE_ID", "your_service_id_here")
+# --------------------------------------------------------------
+
 C_BLU = "\033[94m"
 C_CYN = "\033[96m"
 C_GRN = "\033[92m"
@@ -19,105 +22,70 @@ C_RED = "\033[91m"
 C_RST = "\033[0m"
 C_BOLD = "\033[1m"
 
-def cleanup_ports():
-    print(f"{C_YLW}[*] Cleaning up ports (3001, 3002, 8080)...{C_RST}")
-    subprocess.run("fuser -k 3001/tcp 3002/tcp 8080/tcp 2>/dev/null", shell=True)
-    time.sleep(1)
-
-def set_env(mode):
-    env_path = ".env"
-    if not os.path.exists(env_path):
-        print(f"{C_RED}[-] {env_path} not found!{C_RST}")
+def update_render_env(enabled):
+    if RENDER_API_KEY == "your_render_api_key_here":
+        print(f"{C_RED}[!] Error: Render API Key not set in launch.py{C_RST}")
         return
 
-    with open(env_path, "r") as f:
-        lines = f.readlines()
-
-    with open(env_path, "w") as f:
-        for line in lines:
-            if line.startswith("SW_ENABLED="):
-                f.write(f"SW_ENABLED={'true' if mode == 'secure' else 'false'}\n")
-            else:
-                f.write(line)
-
-def launch_standard():
-    print(f"\n{C_CYN}{C_BOLD}🔓 STARTING ZYNCHAT STANDARD (Unprotected Mode)...{C_RST}")
-    cleanup_ports()
-    set_env("standard")
-    print(f"{C_GRN}🚀 ZynChat active on http://localhost:3001{C_RST}")
-    try:
-        subprocess.run(["node", "server.js"])
-    except KeyboardInterrupt:
-        print(f"\n{C_YLW}[*] Shutting down...{C_RST}")
-
-def launch_secure():
-    print(f"\n{C_BLU}{C_BOLD}🛡️  STARTING ZYNCHAT SECURE (ShieldWatch Protected)...{C_RST}")
-    cleanup_ports()
-    set_env("secure")
+    val = "true" if enabled else "false"
+    print(f"{C_YLW}[*] Updating Render Environment: SW_ENABLED={val}...{C_RST}")
     
-    print(f"{C_YLW}[*] Initializing ShieldWatch Intelligence Collector...{C_RST}")
-    collector_proc = subprocess.Popen(["node", "shieldwatch/collector.js"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    time.sleep(2)
+    headers = {
+        "Authorization": f"Bearer {RENDER_API_KEY}",
+        "Content-Type": "application/json"
+    }
     
-    print(f"{C_YLW}[*] Launching Nginx Gateway Architecture...{C_RST}")
-    nginx_conf = os.path.abspath("nginx/zynchat.conf")
-    subprocess.run(["nginx", "-c", nginx_conf])
-    
-    print(f"\n{C_GRN}🚀 ZynChat Secure Mode active via Nginx Gateway!{C_RST}")
-    print(f"{C_CYN}   - Chat App:  http://localhost:8080/{C_RST}")
-    print(f"{C_CYN}   - Dashboard: http://localhost:8080/dashboard/{C_RST}")
+    # Render API expects a list of env vars to update/patch
+    url = f"https://api.render.com/v1/services/{SERVICE_ID}/env-vars"
+    data = [{"key": "SW_ENABLED", "value": val}]
     
     try:
-        subprocess.run(["node", "server.js"])
-    except KeyboardInterrupt:
-        print(f"\n{C_YLW}[*] Shutting down...{C_RST}")
-    finally:
-        print(f"{C_YLW}[*] Terminating ShieldWatch processes...{C_RST}")
-        collector_proc.terminate()
+        # Note: Render usually uses a PUT or PATCH for env vars
+        response = requests.put(url, headers=headers, json=data)
+        if response.status_code in [200, 201, 202]:
+            print(f"{C_GRN}[+] Render updated successfully! Server is redeploying...{C_RST}")
+        else:
+            print(f"{C_RED}[-] Render API Error: {response.status_code} - {response.text}{C_RST}")
+    except Exception as e:
+        print(f"{C_RED}[-] Connection failed: {e}{C_RST}")
 
-def launch_collector_only():
-    print(f"\n{C_BLU}{C_BOLD}🛡️  STARTING LOCAL DASHBOARD (Remote Monitoring Mode)...{C_RST}")
-    cleanup_ports()
-    print(f"{C_YLW}[!] IMPORTANT: To receive feeds from Render to this local dashboard:{C_RST}")
-    print(f"    1. Run '{C_CYN}ngrok http 3002{C_RST}' to get a public URL.")
-    print(f"    2. Set {C_CYN}SW_CEREBRO_ADDR=<ngrok_url>{C_RST} in Render Environment Variables.")
-    print("-" * 70)
-    print(f"{C_GRN}[*] Local Collector starting on port 3002...{C_RST}\n")
+def launch_local_dashboard():
+    print(f"\n{C_BLU}{C_BOLD}🛡️  STARTING LOCAL DASHBOARD (Monitoring Render)...{C_RST}")
+    # Kill previous dashboard
+    subprocess.run("fuser -k 3002/tcp 2>/dev/null", shell=True)
+    
+    print(f"{C_YLW}[!] SETUP REQUIRED:{C_RST}")
+    print(f"    1. Run '{C_CYN}ngrok http 3002{C_RST}' in another terminal.")
+    print(f"    2. Add the ngrok URL to Render env 'SW_CEREBRO_ADDR'.")
+    print("-" * 60)
+    print(f"{C_GRN}[*] Local Collector active on http://localhost:3002{C_RST}")
+    print(f"{C_CYN}[*] Login: shieldwatch-admin-2024{C_RST}\n")
+    
     try:
         subprocess.run(["node", "shieldwatch/collector.js"])
     except KeyboardInterrupt:
         print(f"\n{C_YLW}[*] Shutting down...{C_RST}")
 
-def open_render_dashboard():
-    url = "https://zynchat.onrender.com/dashboard/"
-    print(f"{C_CYN}[*] Opening Remote Live Dashboard: {url}{C_RST}")
-    if sys.platform == "linux":
-        subprocess.run(["xdg-open", url])
-    elif sys.platform == "darwin":
-        subprocess.run(["open", url])
-    elif sys.platform == "win32":
-        os.startfile(url)
-
 if __name__ == "__main__":
     os.system('clear' if os.name == 'posix' else 'cls')
     print(f"{C_BLU}{C_BOLD}=================================================={C_RST}")
-    print(f"{C_CYN}{C_BOLD}             ZYNCHAT COMMAND CENTER               {C_RST}")
+    print(f"{C_CYN}{C_BOLD}          ZYNCHAT REMOTE SERVER CONTROLLER        {C_RST}")
     print(f"{C_BLU}{C_BOLD}=================================================={C_RST}")
-    print(f"{C_CYN}1.{C_RST} {C_BOLD}LOCAL:{C_RST} Launch Standard (Unprotected)")
-    print(f"{C_CYN}2.{C_RST} {C_BOLD}LOCAL:{C_RST} Launch Secure   (RASP + Nginx)")
-    print(f"{C_CYN}3.{C_RST} {C_BOLD}LOCAL:{C_RST} Launch Dashboard Only (Remote Monitor)")
-    print(f"{C_CYN}4.{C_RST} {C_BOLD}REMOTE:{C_RST} Access Live Dashboard (Render)")
+    print(f"{C_GRN}1.{C_RST} {C_BOLD}ENABLE{C_RST} ShieldWatch Protection (on Render)")
+    print(f"{C_RED}2.{C_RST} {C_BOLD}DISABLE{C_RST} ShieldWatch Protection (on Render)")
+    print(f"{C_CYN}3.{C_RST} {C_BOLD}LAUNCH{C_RST} Local Dashboard (Monitor Render)")
+    print(f"{C_YLW}4.{C_RST} {C_BOLD}EXIT{C_RST}")
     print(f"{C_BLU}=================================================={C_RST}")
     
-    choice = input(f"{C_BOLD}Select Operation [1-4]: {C_RST}").strip()
+    choice = input(f"{C_BOLD}Action [1-4]: {C_RST}").strip()
     
     if choice == "1":
-        launch_standard()
+        update_render_env(True)
     elif choice == "2":
-        launch_secure()
+        update_render_env(False)
     elif choice == "3":
-        launch_collector_only()
+        launch_local_dashboard()
     elif choice == "4":
-        open_render_dashboard()
+        sys.exit(0)
     else:
-        print(f"{C_RED}[!] Invalid choice. Exiting.{C_RST}")
+        print(f"{C_RED}[!] Invalid choice.{C_RST}")
