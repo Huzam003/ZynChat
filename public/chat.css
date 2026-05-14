@@ -369,25 +369,34 @@ body.light-theme .moon-icon { display: none; }
     position: fixed; right: 0; top: 0; bottom: 0; width: 85%; max-width: 320px;
     transform: translateX(100%); box-shadow: -20px 0 50px rgba(0,0,0,0.5);
     z-index: 1000; border-right: none; border-left: 1px solid var(--border);
+    padding-top: env(safe-area-inset-top, 20px);
   }
   .sidebar.open { transform: translateX(0); }
   
   .sidebar-toggle { 
     display: flex !important; 
     order: 10; /* Move to the right side of the header */
-    width: 40px; height: 40px;
+    width: 44px; height: 44px; /* Larger tap target */
   }
-  .sidebar-toggle svg { width: 24px; height: 24px; }
+  .sidebar-toggle svg { width: 26px; height: 26px; }
 
-  .channel-header { height: 70px; padding: 0 15px; }
-  .channel-name { font-size: 18px; }
+  .channel-header { 
+    height: auto; 
+    min-height: 80px; 
+    padding: env(safe-area-inset-top, 25px) 15px 10px; 
+    display: flex; align-items: center; gap: 10px;
+  }
+  .channel-name { font-size: 18px; margin-top: 2px; }
   .channel-desc { font-size: 13px; }
   
-  .room-item { padding: 12px 16px; font-size: 15px; }
-  .user-name { font-size: 15px; }
-  .msg-bubble { font-size: 15px; padding: 10px 14px; }
+  .room-item { padding: 14px 18px; font-size: 16px; }
+  .user-name { font-size: 16px; }
+  .msg-bubble { font-size: 16px; padding: 12px 16px; }
   
-  .input-bar { height: 55px; }
+  .input-area { 
+    padding-bottom: calc(env(safe-area-inset-bottom, 15px) + 10px); 
+  }
+  .input-bar { height: 60px; }
   .input-bar input { font-size: 16px; }
 }
 
