@@ -90,9 +90,16 @@ def get_ngrok_url():
     return None
 
 def start_ngrok_tunnel():
-    print(f"{C_YLW}[*] Starting automated ngrok tunnel on port 3002...{C_RST}")
+    # 1. Check if ngrok is ALREADY running first
+    existing_url = get_ngrok_url()
+    if existing_url:
+        clean_url = existing_url.replace("https://", "").replace("http://", "")
+        print(f"{C_GRN}[+] Found existing ngrok tunnel: {existing_url}{C_RST}")
+        return clean_url, None
+
+    print(f"{C_YLW}[*] No active tunnel found. Starting automated ngrok...{C_RST}")
     
-    # Try to kill existing ngrok
+    # Try to kill zombie ngrok processes only if none are active
     subprocess.run("pkill -f ngrok", shell=True, stderr=subprocess.DEVNULL)
     time.sleep(1)
     

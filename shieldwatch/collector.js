@@ -386,23 +386,24 @@ app.post('/api/active-users', requireApiToken, (req, res) => {
   const { sessions } = req.body;
   if (!Array.isArray(sessions)) return res.json({ ok: false });
 
+  console.log(`[Sync] Received ${sessions.length} active sessions from sensor.`);
   const activeSet = new Set(sessions);
   let changed = false;
 
-  // Mark existing profiles as online/offline
-  for (const a of attackers.values()) {
-    if (a.session && !a.session.startsWith('anon@')) {
-      const isOnlineNow = activeSet.has(a.session);
-      if (a.isOnline !== isOnlineNow) {
-        a.isOnline = isOnlineNow;
-        changed = true;
-      }
+  // Mark existing profiles
+  for (const [sid, a] of attackers) {
+    const isOnlineNow = activeSet.has(sid);
+    if (a.isOnline !== isOnlineNow) {
+      console.log(`[Sync] User ${sid} is now ${isOnlineNow ? 'ONLINE' : 'OFFLINE'}`);
+      a.isOnline = isOnlineNow;
+      changed = true;
     }
   }
 
-  // Create basic profile for any online user we don't have yet (ex: already online before collector started)
+  // Add new profiles for online users
   for (const session of sessions) {
     if (!attackers.has(session)) {
+      console.log(`[Sync] New user detected online: ${session}`);
       upsertProfile(session, null, null, null, { isOnline: true });
       changed = true;
     }

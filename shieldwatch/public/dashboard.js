@@ -129,7 +129,9 @@ function animateNum(id, val) {
 // ─── Render Left Panel ────────────────────────────────────────────────────────
 function renderLeft(attackers) {
   // Show ALL currently online users (Normal and Flagged) in the Active list
+  // We strictly check isOnline === true to ensure real-time accuracy
   const online   = attackers.filter(a => a.isOnline === true);
+  
   // Show attackers with history even if they are offline (so we don't lose them)
   const flagged  = attackers.filter(a => (a.threatScore || 0) > 0 && a.isOnline !== true);
 
