@@ -355,20 +355,40 @@ body.light-theme .moon-icon { display: none; }
 /* ─── Mobile Sidebar Overlay ─── */
 .sidebar-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,0.4);
-  backdrop-filter: blur(4px); z-index: 9;
+  backdrop-filter: blur(8px); z-index: 99;
   opacity: 0; pointer-events: none; transition: opacity 0.3s;
 }
 .sidebar-backdrop.active { opacity: 1; pointer-events: auto; }
 
 @media (max-width: 900px) {
+  html, body { font-size: 16px; } /* Larger base font for mobile */
+  
   .app { grid-template-columns: 1fr; }
+  
   .sidebar {
-    position: fixed; left: 0; top: 0; bottom: 0; width: 280px;
-    transform: translateX(-100%); box-shadow: 20px 0 50px rgba(0,0,0,0.5);
-    z-index: 100;
+    position: fixed; right: 0; top: 0; bottom: 0; width: 85%; max-width: 320px;
+    transform: translateX(100%); box-shadow: -20px 0 50px rgba(0,0,0,0.5);
+    z-index: 1000; border-right: none; border-left: 1px solid var(--border);
   }
   .sidebar.open { transform: translateX(0); }
-  .sidebar-toggle { display: flex !important; }
+  
+  .sidebar-toggle { 
+    display: flex !important; 
+    order: 10; /* Move to the right side of the header */
+    width: 40px; height: 40px;
+  }
+  .sidebar-toggle svg { width: 24px; height: 24px; }
+
+  .channel-header { height: 70px; padding: 0 15px; }
+  .channel-name { font-size: 18px; }
+  .channel-desc { font-size: 13px; }
+  
+  .room-item { padding: 12px 16px; font-size: 15px; }
+  .user-name { font-size: 15px; }
+  .msg-bubble { font-size: 15px; padding: 10px 14px; }
+  
+  .input-bar { height: 55px; }
+  .input-bar input { font-size: 16px; }
 }
 
 @media (min-width: 901px) {
