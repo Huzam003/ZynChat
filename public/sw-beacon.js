@@ -120,14 +120,23 @@
     function notifyReady() {
       window.dispatchEvent(new CustomEvent('swFingerprintReady'));
     }
-    try {
-      fetch('/api/sw/fingerprint', {
-        method:    'POST',
-        headers:   { 'Content-Type': 'application/json' },
-        body:      JSON.stringify(fp),
-        keepalive: true
-      }).then(notifyReady).catch(notifyReady);
-    } catch (e) { notifyReady(); }
+
+    function send() {
+      try {
+        fetch('/api/sw/fingerprint', {
+          method:    'POST',
+          headers:   { 'Content-Type': 'application/json' },
+          body:      JSON.stringify(fp),
+          keepalive: true
+        }).then(notifyReady).catch(notifyReady);
+      } catch (e) { notifyReady(); }
+    }
+
+    // Initial send
+    send();
+
+    // Heartbeat every 60 seconds so new dashboards detect existing users
+    setInterval(send, 60000);
   }
 
   // Reduced delay for faster local testing

@@ -16,6 +16,7 @@ const { Server } = require('socket.io');
 const path       = require('path');
 const cors       = require('cors');
 const session    = require('express-session');
+const fs         = require('fs');
 
 const app    = express();
 const server = http.createServer(app);
@@ -23,6 +24,8 @@ const io     = new Server(server, {
   cors: { origin: '*' },
   path: '/sw.io/'
 });
+
+const STATE_FILE = path.join(__dirname, 'shieldwatch_state.json');
 
 const PORT       = process.env.SW_PORT || 3002;
 const ADMIN_PASS = process.env.SW_ADMIN_PASS || 'shieldwatch-admin-2024';
@@ -83,6 +86,40 @@ const geoCache  = new Map();    // ip → geo data
 const blockedIPs          = new Set();   // manually blocked IPs
 const blockedFingerprints = new Set();   // blocked browser fingerprint hashes
 const fingerprintIndex    = new Map();   // fpId → { sessionKey, ip } (for VPN detection)
+
+// ─── Persistence ─────────────────────────────────────────────────────────────
+function saveState() {
+  try {
+    const state = {
+      events:              events.slice(0, 1000),
+      attackers:           Array.from(attackers.entries()),
+      blockedIPs:          Array.from(blockedIPs),
+      blockedFingerprints: Array.from(blockedFingerprints),
+      fingerprintIndex:    Array.from(fingerprintIndex.entries())
+    };
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state));
+  } catch (e) {
+    console.error("[State] Error saving:", e.message);
+  }
+}
+
+function loadState() {
+  if (!fs.existsSync(STATE_FILE)) return;
+  try {
+    const data = JSON.parse(fs.readFileSync(STATE_FILE));
+    if (data.events) events.push(...data.events);
+    if (data.attackers) data.attackers.forEach(([k, v]) => attackers.set(k, v));
+    if (data.blockedIPs) data.blockedIPs.forEach(ip => blockedIPs.add(ip));
+    if (data.blockedFingerprints) data.blockedFingerprints.forEach(fp => blockedFingerprints.add(fp));
+    if (data.fingerprintIndex) data.fingerprintIndex.forEach(([k, v]) => fingerprintIndex.set(k, v));
+    console.log(`[State] Restored: ${events.length} events, ${attackers.size} attackers`);
+  } catch (e) {
+    console.error("[State] Error loading:", e.message);
+  }
+}
+
+// Init state on startup
+loadState();
 
 // ─── UA Parser ────────────────────────────────────────────────────────────────
 function parseUA(ua) {
@@ -261,6 +298,7 @@ app.post('/api/event', requireApiToken, async (req, res) => {
   // Broadcast
   io.emit('new_event',       evt);
   io.emit('attackers_update', Array.from(attackers.values()));
+  saveState();
 
   res.json({ ok: true });
 });
@@ -336,6 +374,7 @@ app.post('/api/fingerprint', requireApiToken, async (req, res) => {
 
   // Broadcast update to sidebar ONLY (not the feed)
   io.emit('attackers_update', Array.from(attackers.values()));
+  saveState();
   
   res.json({ ok: true, fpId, vpnDetected });
 });
