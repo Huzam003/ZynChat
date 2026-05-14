@@ -390,6 +390,8 @@ app.post('/api/fingerprint', requireApiToken, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 app.post('/api/active-users', requireApiToken, (req, res) => {
   const { sessions } = req.body;
+  console.log(`[Sync] Request from sensor. Token: ${req.headers['x-sw-api-token']}, Users: ${sessions ? sessions.length : 0}`);
+  
   if (!Array.isArray(sessions)) return res.json({ ok: false });
 
   lastSyncTime = Date.now();

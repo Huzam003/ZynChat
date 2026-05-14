@@ -561,9 +561,9 @@ function submitFingerprint(fingerprintData, req) {
 }
 
 // ─── Sync Active Users ────────────────────────────────────────────────────────
-function syncActiveUsers(users) {
-  // users is the array of currently online user objects
-  const sessions = users.map(u => u.username);
+function syncActiveUsers(sessions) {
+  // sessions should be an array of strings (usernames)
+  if (!Array.isArray(sessions)) return;
   report('/api/active-users', { sessions });
 }
 
