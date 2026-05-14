@@ -96,21 +96,35 @@ def start_ngrok_tunnel():
     subprocess.run("pkill -f ngrok", shell=True, stderr=subprocess.DEVNULL)
     time.sleep(1)
     
-    # Start ngrok in background
-    # We use -log=stdout to suppress terminal takeover or just redirect
-    proc = subprocess.Popen(["ngrok", "http", "3002"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Start ngrok in background and capture stderr
+    try:
+        proc = subprocess.Popen(
+            ["ngrok", "http", "3002"], 
+            stdout=subprocess.DEVNULL, 
+            stderr=subprocess.PIPE,
+            text=True
+        )
+    except FileNotFoundError:
+        print(f"{C_RED}[-] Error: 'ngrok' command not found. Is it installed?{C_RST}")
+        return None, None
     
     # Wait for tunnel to come up
-    for _ in range(10):
-        time.sleep(1.5)
+    for _ in range(40):
+        time.sleep(1)
         url = get_ngrok_url()
         if url:
-            # Strip https://
             clean_url = url.replace("https://", "").replace("http://", "")
             print(f"{C_GRN}[+] Tunnel Active: {url}{C_RST}")
             return clean_url, proc
+        
+        # Check if process died early
+        if proc.poll() is not None:
+            err = proc.stderr.read()
+            print(f"{C_RED}[-] Ngrok failed to start. Error: {err.strip()}{C_RST}")
+            return None, None
     
-    print(f"{C_RED}[-] Failed to start ngrok. Please start it manually.{C_RST}")
+    print(f"{C_RED}[-] Timeout: ngrok started but tunnel didn't appear in 40s.{C_RST}")
+    print(f"{C_YLW}[!] Tip: Check http://localhost:4040 in your browser to see if ngrok is stuck.{C_RST}")
     return None, None
 
 def wait_for_deployment(deploy_id):
