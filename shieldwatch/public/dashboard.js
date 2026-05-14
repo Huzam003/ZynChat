@@ -128,14 +128,15 @@ function animateNum(id, val) {
 
 // ─── Render Left Panel ────────────────────────────────────────────────────────
 function renderLeft(attackers) {
-  // Only show users with 0 threat score if they are currently online
-  const users    = attackers.filter(a => (a.threatScore || 0) === 0 && a.isOnline === true);
-  const flagged  = attackers.filter(a => (a.threatScore || 0) > 0);
+  // Show ALL currently online users (Normal and Flagged) in the Active list
+  const online   = attackers.filter(a => a.isOnline === true);
+  // Show attackers with history even if they are offline (so we don't lose them)
+  const flagged  = attackers.filter(a => (a.threatScore || 0) > 0 && a.isOnline !== true);
 
-  renderList('userList',     users,   'No active users');
-  renderList('attackerList', flagged, 'No attackers identified');
+  renderList('userList',     online,  'No active users');
+  renderList('attackerList', flagged, 'No offline attackers');
   
-  if ($('userCount'))     $('userCount').textContent     = users.length;
+  if ($('userCount'))     $('userCount').textContent     = online.length;
   if ($('attackerCount')) $('attackerCount').textContent = flagged.length;
 }
 
@@ -149,10 +150,10 @@ function renderList(targetId, list, emptyMsg) {
   }
 
   el.innerHTML = list.map(a => {
-    const isAttacker = targetId === 'attackerList';
-    const chipClass  = isAttacker ? 'attacker-chip' : 'user-chip';
-    const dotColor   = isAttacker ? (a.threat?.color || '#ef4444') : '#10b981';
-    const icon       = isAttacker ? '🎯' : '🛡️';
+    const hasThreat  = (a.threatScore || 0) > 0;
+    const chipClass  = hasThreat ? 'attacker-chip' : 'user-chip';
+    const dotColor   = hasThreat ? (a.threat?.color || '#ef4444') : '#10b981';
+    const icon       = hasThreat ? '🎯' : '🛡️';
     
     return `
       <div class="${chipClass} ${a.session === selectedSession ? 'selected' : ''}"
@@ -160,7 +161,7 @@ function renderList(targetId, list, emptyMsg) {
         <div class="attacker-dot" style="background:${dotColor}"></div>
         <span class="attacker-icon">${icon}</span>
         <span class="attacker-name">${escHtml(a.session)}</span>
-        ${isAttacker || a.threatScore > 0 ? `<span class="attacker-score">${a.threatScore}</span>` : ''}
+        ${hasThreat ? `<span class="attacker-score">${a.threatScore}</span>` : ''}
       </div>`;
   }).join('');
 }
