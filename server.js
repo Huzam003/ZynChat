@@ -59,6 +59,7 @@ app.use(helmet({
 }));
 app.use(express.json({ limit: '512kb' }));
 app.use(express.urlencoded({ extended: false, limit: '64kb' }));
+app.set('trust proxy', 1); // Allow secure cookies on Render/proxies
 app.use(sessionMiddleware);
 
 // ─── ShieldWatch RASP Sensor (optional) ───────────────────────────────────────
