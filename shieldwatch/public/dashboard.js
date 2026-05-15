@@ -82,35 +82,8 @@ socket.on('attackers_update', (attackers) => {
 });
 
 socket.on('reset', () => {
-  $('feed').innerHTML = '<div class="feed-empty" id="feedEmpty"><div class="feed-empty-icon">🛡️</div><div>Monitoring ZynChat — no threats detected</div><div class="feed-empty-sub">Attacks will appear here in real-time</div></div>';
-  $('attackerList').innerHTML = '<div class="attack-empty">No attackers identified</div>';
-  $('attackTypes').innerHTML  = '<div class="attack-empty">No attacks detected yet</div>';
-  
-  blockedIPSet.clear();
-  blockedFPSet.clear();
-  blockedSessionSet.clear();
-
-  allAttackers.forEach(a => {
-    a.threatScore = 0;
-    a.attackCounts = {};
-    a.threat = null;
-  });
-
-  selectedSession = null;
-  $('profileEmpty').classList.remove('hidden');
-  $('profileContent').classList.add('hidden');
-  
-  renderBlockedList();
-  renderLeft(allAttackers);
-  updateCounters(null, allAttackers);
-  ['cntTotal','cntBlocked','cntDecoys','cntAttackers','statTotal','statBlocked','statDecoys','statLogged','attackerCount','userCount'].forEach(id => { 
-    const el = $(id);
-    if (el) el.textContent = '0'; 
-  });
-
-  // Re-render sidebar to show preserved users correctly
-  renderLeft(allAttackers);
-  updateCounters(null, allAttackers);
+  console.log('[Socket] 🛡️ Reset received, reloading...');
+  location.reload();
 });
 
 // ─── Status ───────────────────────────────────────────────────────────────────
@@ -157,12 +130,11 @@ function animateNum(id, val) {
 
 // ─── Render Left Panel ────────────────────────────────────────────────────────
 function renderLeft(attackers) {
-  // 1. Online Users: Anyone currently connected, regardless of threat status
+  // 1. Online Users: Anyone currently connected
   const online = attackers.filter(a => a.isOnline === true);
   
-  // 2. Flagged Attackers: Anyone with a threatScore > 0 who is OFFLINE
-  // (This prevents people from appearing in two lists simultaneously)
-  const flagged = attackers.filter(a => (a.threatScore || 0) > 0 && a.isOnline !== true);
+  // 2. Flagged Attackers: Anyone with a threatScore > 0
+  const flagged = attackers.filter(a => (a.threatScore || 0) > 0);
 
   renderList('userList',     online,  'No active users');
   renderList('attackerList', flagged, 'No attackers identified');
@@ -203,13 +175,8 @@ function renderList(targetId, list, emptyMsg) {
 }
 
 window.selectAttackerBySession = (sessionID) => {
-  console.log("[Dashboard] Selecting session:", sessionID);
   const attacker = allAttackers.find(x => x.session === sessionID);
-  if (attacker) {
-    selectedSession = sessionID;
-    renderProfile(attacker);
-    renderLeft(allAttackers); // Refresh highlights
-  }
+  if (attacker) selectAttacker(attacker);
 };
 
 // ─── Attack type meta (icon, display name, bar colour) ───────────────────────
@@ -302,16 +269,14 @@ function prependFeedItem(evt, animate) {
 
 // ─── Attacker Profile ─────────────────────────────────────────────────────────
 function selectAttacker(attacker) {
+  if (!attacker) return;
   selectedSession = attacker.session;
-
-  // Update highlights (Safe match)
-  document.querySelectorAll('.user-chip, .attacker-chip').forEach(el => {
-    // We check the technical ID we stored in the onclick, not the display text
-    const isSelected = el.getAttribute('data-session') === attacker.session;
-    el.classList.toggle('selected', isSelected);
-  });
-
+  
+  // Update details
   renderProfile(attacker);
+  
+  // Re-render lists to update highlights correctly across BOTH sections
+  renderLeft(allAttackers);
 }
 
 function renderProfile(a) {
@@ -645,8 +610,19 @@ function showToast(msg, color = 'red') {
 
 // ─── Reset button ─────────────────────────────────────────────────────────────
 $('resetBtn').addEventListener('click', async () => {
-  if (!confirm('Clear all ShieldWatch data?')) return;
-  await fetch('api/reset', { method: 'POST' });
+  if (!confirm('🚨 CRITICAL: Wipe all ShieldWatch threat data?')) return;
+  try {
+    const res = await fetch('/api/reset', { method: 'POST' });
+    if (res.ok) {
+      showToast('🛡️ All data cleared!', 'green');
+      setTimeout(() => location.reload(), 800);
+    } else {
+      const err = await res.json();
+      showToast('❌ Reset failed: ' + (err.error || 'Unauthorized'), 'red');
+    }
+  } catch (e) {
+    showToast('❌ Network error during reset', 'red');
+  }
 });
 
 // ─── Logout handler ───

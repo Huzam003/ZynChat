@@ -199,8 +199,12 @@ app.use(selfMonitor);
 // 1. Protect Admin Dashboard
 function requireAdmin(req, res, next) {
   if (req.session.isAdmin) return next();
-  if (req.path === '/login' || req.path.startsWith('/api/auth')) return next();
   res.redirect('/login');
+}
+
+function requireAdminAPI(req, res, next) {
+  if (req.session && req.session.isAdmin) return next();
+  res.status(401).json({ ok: false, error: 'Unauthorized' });
 }
 
 // 2. Protect Inbound API (Sensor -> Collector)
@@ -288,6 +292,7 @@ app.post('/api/event', requireApiToken, async (req, res) => {
   profile.threat      = threatLevel(profile.threatScore);
 
   // Update global stats
+  globalStats.total++;
   if (evt.verdict === 'BLOCKED') globalStats.blocked++;
   if (evt.verdict === 'DECOY')   globalStats.decoys++;
   if (evt.verdict === 'LOGGED')  globalStats.logged++;
@@ -508,7 +513,14 @@ async function getGeoInfo(ip) {
       http.get(`http://ipapi.co/${ip}/json/`, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve(JSON.parse(data)));
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            console.warn(`[GeoIP] ⚠️  Invalid JSON from ipapi.co for IP ${ip}`);
+            resolve({ country_name: 'Unknown', city: 'Unknown', org: 'ISP' });
+          }
+        });
       }).on('error', reject);
     });
 
@@ -590,7 +602,7 @@ function threatLevel(score) {
 }
 
 // ─── API Endpoints (Admin Protected) ──────────────────────────────────────────
-app.get('/api/stats', (req, res) => {
+app.get('/api/stats',            requireAdminAPI, (req, res) => {
   res.json({
     ...globalStats,
     attackers: Array.from(attackers.values()).filter(a => a.threatScore > 0).length,
@@ -598,15 +610,13 @@ app.get('/api/stats', (req, res) => {
   });
 });
 
-app.get('/api/attackers', (req, res) => res.json(Array.from(attackers.values())));
-app.get('/api/events',    (req, res) => res.json(events));
+app.get('/api/attackers',        requireAdminAPI, (req, res) => res.json(Array.from(attackers.values())));
+app.get('/api/events',           requireAdminAPI, (req, res) => res.json(events));
+app.get('/api/blocked',          requireAdminAPI, (req, res) => res.json(Array.from(blockedIPs)));
+app.get('/api/blocked-fp',       requireAdminAPI, (req, res) => res.json(Array.from(blockedFingerprints)));
+app.get('/api/blocked-sessions', requireAdminAPI, (req, res) => res.json(Array.from(blockedSessions)));
 
-app.get('/api/blocked', (req, res) => res.json(Array.from(blockedIPs)));
-app.get('/api/blocked-fp', (req, res) => res.json(Array.from(blockedFingerprints)));
-app.get('/api/blocked-sessions', (req, res) => res.json(Array.from(blockedSessions)));
-
-// ─── Block Actions (Hardened) ────────────────────────────────────────────────
-app.post('/api/block-fp', (req, res) => {
+app.post('/api/block-fp',        requireAdminAPI, (req, res) => {
   const { fpId } = req.body;
   if (!fpId) return res.json({ ok: false });
   blockedFingerprints.add(fpId);
@@ -615,7 +625,7 @@ app.post('/api/block-fp', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/unblock-fp', (req, res) => {
+app.post('/api/unblock-fp', requireAdminAPI, (req, res) => {
   const { fpId } = req.body;
   blockedFingerprints.delete(fpId);
   saveState();
@@ -623,7 +633,7 @@ app.post('/api/unblock-fp', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/block-session', (req, res) => {
+app.post('/api/block-session', requireAdminAPI, (req, res) => {
   const { session } = req.body;
   if (!session) return res.json({ ok: false });
   blockedSessions.add(session);
@@ -632,7 +642,7 @@ app.post('/api/block-session', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/unblock-session', (req, res) => {
+app.post('/api/unblock-session', requireAdminAPI, (req, res) => {
   const { session } = req.body;
   blockedSessions.delete(session);
   saveState();
@@ -640,7 +650,7 @@ app.post('/api/unblock-session', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/unblock', (req, res) => {
+app.post('/api/unblock', requireAdminAPI, (req, res) => {
   const { ip } = req.body;
   blockedIPs.delete(ip);
   saveState();
@@ -648,7 +658,8 @@ app.post('/api/unblock', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/reset', (req, res) => {
+app.post('/api/reset', requireAdminAPI, (req, res) => {
+  console.log(`[Reset] 🧹 Wiping all threat data (Requested by ${req.session.adminUser || 'Admin'})`);
   events.length = 0;
   attackers.clear();
   blockedIPs.clear();
