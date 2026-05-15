@@ -80,12 +80,13 @@ app.use(helmet({
       "script-src-attr": ["'unsafe-inline'"], // [FIX] Allow inline onclick handlers for dashboard buttons
       "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
       "font-src": ["'self'", "fonts.gstatic.com"],
+      "connect-src": ["'self'", "ws:", "wss:", "http:", "https:"],
       "frame-ancestors": ["'none'"],
     }
   }
 }));
 
-// app.use(cors()); // REMOVED per hardening requirements
+app.use(cors({ origin: true, credentials: true })); 
 app.use(express.json({ limit: '512kb' }));
 app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 app.use(sessionMiddleware);
