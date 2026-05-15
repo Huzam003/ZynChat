@@ -34,7 +34,6 @@ if (fs.existsSync(envPath)) {
 }
 
 // ─── Environment & Secrets Hardening ──────────────────────────────────────────
-const envPath = path.join(__dirname, '.env');
 
 function getOrGenerateSecret(key, length = 32) {
   if (process.env[key]) return process.env[key];
