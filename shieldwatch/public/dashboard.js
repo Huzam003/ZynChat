@@ -1,6 +1,6 @@
 /* ─── ShieldWatch Dashboard — Real-Time Client ──────────────────────────── */
 
-const socket = io({ path: '/sw.io/' });
+const socket = io({ path: '/sw.io' });
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let allAttackers    = [];
