@@ -290,10 +290,14 @@ def launch_local_dashboard():
     # Kill previous dashboard
     subprocess.run("fuser -k 3002/tcp 2>/dev/null", shell=True)
     
+    # Reload env to catch any newly generated secrets from collector's first run
+    load_env()
+    admin_pass = os.getenv("SW_ADMIN_PASS", "Check .env")
+    
     print("-" * 60)
     print(f"{C_GRN}[*] Dashboard: http://localhost:3002{C_RST}")
-    print(f"{C_CYN}[*] Login: shieldwatch-admin-2024{C_RST}")
-    print(f"{C_BLU}[*] Monitoring: {addr if addr else 'Local Only'}{C_RST}")
+    print(f"{C_CYN}[*] Security Credential: {C_BOLD}{admin_pass}{C_RST}")
+    print(f"{C_BLU}[*] Monitoring Status: {addr if addr else 'Local Only'}{C_RST}")
     print("-" * 60)
     
     try:

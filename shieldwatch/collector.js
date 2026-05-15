@@ -33,21 +33,37 @@ if (fs.existsSync(envPath)) {
   });
 }
 
-// ─── Startup Env Guard ────────────────────────────────────────────────────────
+// ─── Environment & Secrets Hardening ──────────────────────────────────────────
+const envPath = path.join(__dirname, '.env');
+
+function getOrGenerateSecret(key, length = 32) {
+  if (process.env[key]) return process.env[key];
+  const secret = crypto.randomBytes(length).toString('hex');
+  // Append to .env for persistence if it exists
+  if (fs.existsSync(envPath)) {
+    fs.appendFileSync(envPath, `\n${key}=${secret}`);
+    console.log(`[Security] 🔐 Generated new ${key} and saved to .env`);
+  } else {
+    console.warn(`[Security] ⚠️ Generated ephemeral ${key} (No .env found)`);
+  }
+  process.env[key] = secret;
+  return secret;
+}
+
+const IS_PROD    = process.env.NODE_ENV === 'production';
+const PORT       = process.env.SW_PORT || 3002;
+const ADMIN_PASS = process.env.SW_ADMIN_PASS || getOrGenerateSecret('SW_ADMIN_PASS', 16);
+const API_TOKEN  = process.env.SW_API_TOKEN  || getOrGenerateSecret('SW_API_TOKEN', 24);
+const SES_SECRET = process.env.SW_SESSION_SECRET || getOrGenerateSecret('SW_SESSION_SECRET', 32);
+
 const app    = express();
 const server = http.createServer(app);
-const IS_PROD = process.env.NODE_ENV === 'production';
-
 const io     = new Server(server, { 
-  cors: { origin: true, credentials: true }, // Allow session cookies
+  cors: { origin: true, credentials: true },
   path: '/sw.io'
 });
 
 const STATE_FILE = path.join(__dirname, 'shieldwatch_state.json');
-
-const PORT       = process.env.SW_PORT || 3002;
-const ADMIN_PASS = process.env.SW_ADMIN_PASS || 'shieldwatch-admin-2024';
-const API_TOKEN  = process.env.SW_API_TOKEN  || 'sw-internal-token-xyz';
 
 // Persistent stats (Global)
 let globalStats = {
@@ -60,7 +76,7 @@ let globalStats = {
 
 const sessionMiddleware = session({
   name:              'sw.sid',
-  secret:            process.env.SW_SESSION_SECRET || 'sw-collector-secret',
+  secret:            SES_SECRET,
   resave:            false,
   saveUninitialized: false,
   cookie: { 
@@ -70,6 +86,29 @@ const sessionMiddleware = session({
     secure: (IS_PROD && !process.env.SW_LOCAL_DEV) 
   }
 });
+
+// ─── Simple Rate Limiter ─────────────────────────────────────────────────────
+const rateLimitMap = new Map(); // ip -> { count, lastAt }
+function rateLimit(limit, windowMs) {
+  return (req, res, next) => {
+    const ip = req.ip;
+    const now = Date.now();
+    const entry = rateLimitMap.get(ip) || { count: 0, lastAt: now };
+    
+    if (now - entry.lastAt > windowMs) {
+      entry.count = 1;
+      entry.lastAt = now;
+    } else {
+      entry.count++;
+    }
+    
+    rateLimitMap.set(ip, entry);
+    if (entry.count > limit) {
+      return res.status(429).json({ ok: false, error: 'Too many requests. Please slow down.' });
+    }
+    next();
+  };
+}
 
 app.disable('x-powered-by');
 app.use(helmet({
@@ -92,17 +131,16 @@ app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 app.use(sessionMiddleware);
 
 io.use((socket, next) => {
-  // sessionMiddleware(socket.request, {}, () => {
-  //   const session = socket.request.session;
-  //   if (session && session.isAdmin) {
-  //     console.log(`[Socket] ✅ Admin session verified`);
-  //     next();
-  //   } else {
-  //     console.error(`[Socket] 🔒 Unauthorized session`);
-  //     next(new Error('Unauthorized'));
-  //   }
-  // });
-  next(); // [DEBUG] Allow all for now
+  sessionMiddleware(socket.request, {}, () => {
+    const session = socket.request.session;
+    if (session && session.isAdmin) {
+      console.log(`[Socket] ✅ Admin session verified for ${session.adminUser || 'Admin'}`);
+      next();
+    } else {
+      console.warn(`[Socket] 🔒 Unauthorized connection attempt from ${socket.handshake.address}`);
+      next(new Error('Unauthorized'));
+    }
+  });
 });
 
 // ─── Brute Force Protection (Dashboard) ──────────────────────────────────────
@@ -124,34 +162,30 @@ const SELF_PATTERNS = {
   path: [/\.\.\//, /\.\.\\/],
 };
 
+function sanitize(obj) {
+  if (typeof obj !== 'object' || obj === null) return obj;
+  for (let key in obj) {
+    if (typeof obj[key] === 'string') {
+      obj[key] = obj[key].replace(/[<>]/g, '').trim(); // Basic XSS strip
+    } else if (typeof obj[key] === 'object') {
+      sanitize(obj[key]);
+    }
+  }
+  return obj;
+}
+
 function selfMonitor(req, res, next) {
-  // Scan all inputs for threats against the collector itself
+  sanitize(req.body);
+  sanitize(req.query);
+  
   const inputs = [req.query, req.body, req.params];
   for (const input of inputs) {
     const str = JSON.stringify(input);
     for (const [type, patterns] of Object.entries(SELF_PATTERNS)) {
       for (const re of patterns) {
         if (re.test(str)) {
-          console.error(`[SELF-PROTECT] 🚨 Blocked ${type.toUpperCase()} attack on Collector dashboard from ${req.ip}`);
-          // Add to events so it shows up in its own dashboard!
-          const evt = {
-            id: crypto.randomUUID(),
-            app: 'shieldwatch-core',
-            timestamp: new Date().toISOString(),
-            ip: req.ip,
-            method: req.method,
-            path: req.path,
-            ua: req.headers['user-agent'] || '',
-            threat: { type, matched: `Self-Shield: ${type} attack on collector`, raw: str.slice(0,100) },
-            verdict: 'BLOCKED',
-            session: 'collector-admin-panel'
-          };
-          // Chain it
-          const hash = crypto.createHash('sha256').update(lastEventHash + JSON.stringify(evt)).digest('hex');
-          evt.chainHash = hash;
-          lastEventHash = hash;
-          events.unshift(evt);
-          return res.status(403).json({ ok: false, error: 'Access denied: malicious payload detected by Self-Shield.' });
+          console.error(`[SELF-PROTECT] 🚨 Blocked ${type.toUpperCase()} attack on Collector from ${req.ip}`);
+          return res.status(403).json({ ok: false, error: 'Malicious payload detected.' });
         }
       }
     }
@@ -188,12 +222,38 @@ function requireApiOrAdmin(req, res, next) {
   res.status(401).json({ ok: false, error: 'Unauthorized: Access Denied' });
 }
 
-// Static files (public) — login is public, rest is protected
+// Static files (public/login)
+app.use('/login-assets', express.static(path.join(__dirname, 'public', 'login-assets')));
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
-// app.use(requireAdmin); // DO NOT USE GLOBAL REDIRECT HERE - MOVED DOWN
-app.use(express.static(path.join(__dirname, 'public', 'login-assets'), { index: false })); // If you had any
 
-// ─── In-Memory Store ──────────────────────────────────────────────────────────
+// API Auth (Public)
+app.post('/api/auth/login', rateLimit(10, 15 * 60 * 1000), checkDashboardBruteForce, (req, res) => {
+  const { password, user } = req.body; // user is optional display name
+  if (!password) return res.status(401).json({ ok: false, error: 'Password required' });
+
+  if (password === ADMIN_PASS) {
+    req.session.isAdmin = true;
+    req.session.adminUser = user || 'Admin';
+    dashboardFailures.delete(req.ip);
+    return res.json({ ok: true });
+  }
+  
+  const fail = dashboardFailures.get(req.ip) || { count: 0, lastAt: 0 };
+  fail.count++;
+  fail.lastAt = Date.now();
+  dashboardFailures.set(req.ip, fail);
+  
+  res.status(401).json({ ok: false, error: 'Access Denied: Invalid Security Credential' });
+});
+
+// ─── Protected Routes ────────────────────────────────────────────────────────
+app.use(requireAdmin);
+
+// Dashboard Assets
+app.get('/',           (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/dashboard.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.js')));
+app.get('/dashboard.css', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.css')));
 const events    = [];           // all threat events, newest first
 let lastEventHash = '0000000000000000'; // Telemetry Hash Chain Root
 const attackers = new Map();    // sessionKey → attacker profile
@@ -622,11 +682,7 @@ app.get('/api/stats', (_req, res) => {
   });
 });
 
-// Protect Main Index and public static except login
-app.get('/', requireAdmin, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/index.html', requireAdmin, (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/dashboard.js', requireAdmin, (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.js')));
-app.get('/dashboard.css', requireAdmin, (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.css')));
+// Status Check (Public)
 
 app.get('/ping', (_req, res) => {
   res.json({ status: 'online', app: 'shieldwatch-collector', events: events.length });

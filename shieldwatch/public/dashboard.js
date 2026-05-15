@@ -157,7 +157,11 @@ function animateNum(id, val) {
 
 // ─── Render Left Panel ────────────────────────────────────────────────────────
 function renderLeft(attackers) {
-  const online  = attackers.filter(a => a.isOnline === true);
+  // 1. Online Users: Anyone currently connected, regardless of threat status
+  const online = attackers.filter(a => a.isOnline === true);
+  
+  // 2. Flagged Attackers: Anyone with a threatScore > 0 who is OFFLINE
+  // (This prevents people from appearing in two lists simultaneously)
   const flagged = attackers.filter(a => (a.threatScore || 0) > 0 && a.isOnline !== true);
 
   renderList('userList',     online,  'No active users');
@@ -177,12 +181,13 @@ function renderList(targetId, list, emptyMsg) {
   }
 
   el.innerHTML = list.map(a => {
+    if (!a || !a.session) return ''; // Skip corrupted entries
     const hasThreat  = (a.threatScore || 0) > 0;
     const isSelected = (a.session === selectedSession);
     const chipClass  = hasThreat ? 'attacker-chip' : 'user-chip';
     const dotColor   = hasThreat ? (a.threat?.color || '#ef4444') : '#10b981';
     
-    const displayName = (a.session || 'Anonymous').replace(/^anon@/, 'Guest ');
+    const displayName = a.session.replace(/^anon@/, 'Guest ');
 
     return `
       <div class="${chipClass} ${isSelected ? 'selected' : ''}" 
@@ -310,6 +315,10 @@ function selectAttacker(attacker) {
 }
 
 function renderProfile(a) {
+  if (!a) {
+    console.warn("[Dashboard] Attempted to render null profile");
+    return;
+  }
   console.log("[Dashboard] Rendering profile for:", a.session);
   
   // 1. Reset Visibility
