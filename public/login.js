@@ -284,16 +284,60 @@ document.getElementById('loginUsername').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') document.getElementById('loginPassword').focus();
 });
 
-// ─── ShieldWatch Sync (Optional) ─────────────────────────────────────────────
+// ─── ShieldWatch Fingerprint Gate ─────────────────────────────────────────────
+// Keeps the Sign In button disabled until sw-beacon.js has sent the browser
+// fingerprint to the sensor. This prevents bots from skipping JS.
 (function () {
-  window._swFpReady = true;
-  fetch('/ping').then(res => res.json()).then(data => {
-    if (!data.shieldwatch) {
-      document.querySelectorAll('.badge-shield').forEach(b => {
-        b.textContent = 'Shield Offline';
-        b.style.color = 'rgba(255,255,255,0.3)';
-        b.style.border = '1px solid rgba(255,255,255,0.1)';
-      });
+  const loginBtn  = document.getElementById('loginBtn');
+  const scanBar   = document.getElementById('swScanBar');
+  const scanText  = document.getElementById('swScanText');
+
+  window._swFpReady = false;
+
+  function unlock() {
+    if (window._swFpReady) return;
+    window._swFpReady = true;
+
+    if (loginBtn) {
+      loginBtn.disabled = false;
+      loginBtn.classList.remove('sw-locked');
     }
-  }).catch(() => {});
+
+    if (scanBar) {
+      scanBar.classList.add('sw-scan-done');
+      if (scanText) scanText.textContent = '✓ Device Identity Verified';
+      setTimeout(() => { scanBar.style.opacity = '0'; }, 300);
+      setTimeout(() => { scanBar.style.display  = 'none'; }, 600);
+    }
+  }
+
+  // Unlock when fingerprint is sent
+  window.addEventListener('swFingerprintReady', unlock);
+
+  // Safety fallback: Always unlock after 4s even if network is slow
+  setTimeout(unlock, 4000);
 })();
+
+// Guard login submit
+document.getElementById('loginForm').addEventListener('submit', function (e) {
+  if (!window._swFpReady) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+}, true);
+
+// ─── Sync UI with Backend Status ─────────────────────────────────────────────
+fetch('/ping').then(res => res.json()).then(data => {
+  if (!data.shieldwatch) {
+    window._swFpReady = true;
+    const btn = document.getElementById('loginBtn');
+    if (btn) { btn.disabled = false; btn.classList.remove('sw-locked'); }
+    const bar = document.getElementById('swScanBar');
+    if (bar) bar.style.display = 'none';
+    
+    document.querySelectorAll('.badge-shield').forEach(b => {
+      b.textContent = 'Shield Offline';
+      b.style.color = 'rgba(255,255,255,0.3)';
+    });
+  }
+}).catch(() => {});

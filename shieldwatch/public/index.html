@@ -130,14 +130,7 @@
 
   <!-- ── CENTER: Live Event Feed ── -->
   <main class="panel panel-center">
-    <!-- Timeline Chart -->
-    <div class="panel-title">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-      Attack Timeline
-    </div>
-    <div style="height: 120px; margin-bottom: 20px;">
-      <canvas id="threatTimeline"></canvas>
-    </div>
+    <!-- Live Threat Feed -->
 
     <div class="panel-title">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
@@ -248,7 +241,6 @@
 
 </div><!-- /.grid -->
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="../sw.io/socket.io.js"></script>
 <script src="dashboard.js"></script>
 </body>

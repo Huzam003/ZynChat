@@ -55,9 +55,9 @@ def update_render_env(enabled):
     data = [{"key": "SW_ENABLED", "value": val}]
     
     try:
-        # Note: Render usually uses a PUT or PATCH for env vars
-        response = requests.put(url, headers=headers, json=data)
-        if response.status_code in [200, 201, 202]:
+        # Use PATCH to update/add without deleting other variables
+        response = requests.patch(url, headers=headers, json=data)
+        if response.status_code in [200, 201, 202, 204]:
             print(f"{C_GRN}[+] Render updated successfully!{C_RST}")
             # Now trigger a cache-cleared redeploy
             clear_cache_and_redeploy()
@@ -84,8 +84,8 @@ def update_render_env_var(key, value):
     data = [{"key": key, "value": value}]
     
     try:
-        response = requests.put(url, headers=headers, json=data)
-        return response.status_code in [200, 201, 202]
+        response = requests.patch(url, headers=headers, json=data)
+        return response.status_code in [200, 201, 202, 204]
     except:
         return False
 
@@ -216,7 +216,8 @@ def clear_cache_and_redeploy():
         if response.status_code in [200, 201]:
             deploy_data = response.json()
             deploy_id = deploy_data.get("id")
-            print(f"{C_GRN}[+] Redeploy triggered successfully! Cache is being cleared.{C_RST}")
+            print(f"{C_GRN}[+] Render Response: {response.status_code} - {response.text}{C_RST}")
+            print(f"{C_GRN}[+] Redeploy triggered successfully! ID: {deploy_id}{C_RST}")
             wait_for_deployment(deploy_id)
         else:
             print(f"{C_RED}[-] Render API Error: {response.status_code} - {response.text}{C_RST}")

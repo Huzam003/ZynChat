@@ -49,6 +49,15 @@ const PORT       = process.env.SW_PORT || 3002;
 const ADMIN_PASS = process.env.SW_ADMIN_PASS || 'shieldwatch-admin-2024';
 const API_TOKEN  = process.env.SW_API_TOKEN  || 'sw-internal-token-xyz';
 
+// Persistent stats (Global)
+let globalStats = {
+  total:   0,
+  blocked: 0,
+  decoys:  0,
+  logged:  0,
+  byType:  {}
+};
+
 const sessionMiddleware = session({
   name:              'sw.sid',
   secret:            process.env.SW_SESSION_SECRET || 'sw-collector-secret',
@@ -422,6 +431,13 @@ app.post('/api/event', requireApiToken, async (req, res) => {
   profile.threatScore = calcThreatScore(profile);
   profile.threat      = threatLevel(profile.threatScore);
 
+  // Update global stats
+  globalStats.total++;
+  if (evt.verdict === 'BLOCKED') globalStats.blocked++;
+  if (evt.verdict === 'DECOY')   globalStats.decoys++;
+  if (evt.verdict === 'LOGGED')  globalStats.logged++;
+  globalStats.byType[tType] = (globalStats.byType[tType] || 0) + 1;
+
   console.log(`[Event] ${tType.toUpperCase()} | ${evt.verdict} | ${sessionKey} | score:${profile.threatScore}`);
 
   // Broadcast
@@ -590,18 +606,9 @@ app.get('/api/live-status', (req, res) => {
 });
 
 app.get('/api/stats', (_req, res) => {
-  const byType = {};
-  events.forEach(e => {
-    const t = e.threat?.type || 'unknown';
-    byType[t] = (byType[t] || 0) + 1;
-  });
   res.json({
-    total:     events.length,
-    blocked:   events.filter(e => e.verdict === 'BLOCKED').length,
-    decoys:    events.filter(e => e.verdict === 'DECOY').length,
-    logged:    events.filter(e => e.verdict === 'LOGGED').length,
-    attackers: Array.from(attackers.values()).filter(a => a.threatScore > 0).length,
-    byType
+    ...globalStats,
+    attackers: Array.from(attackers.values()).filter(a => a.threatScore > 0).length
   });
 });
 
@@ -664,21 +671,26 @@ app.post('/api/unblock', requireAdmin, (req, res) => {
   res.json({ ok: true, unblocked: clean });
 });
 
-// ─── Reset (demo convenience) ─────────────────────────────────────────────────
+// ─── Reset (Clear Cards & Feed Only) ──────────────────────────────────────────
 app.post('/api/reset', requireAdmin, (req, res) => {
-  if (req.body.confirmToken !== 'CONFIRM_RESET') {
-    return res.status(400).json({ ok: false, error: 'Reset confirmation token required' });
-  }
   events.splice(0);
-  attackers.clear();
-  geoCache.clear();
-  blockedIPs.clear();
-  blockedFingerprints.clear();
-  fingerprintIndex.clear();
-  io.emit('reset');
-  io.emit('blocked_update', []);
-  io.emit('blocked_fp_update', []);
-  console.log('[Reset] All data cleared');
+  lastEventHash = null; // Reset the chain
+  
+  // Reset Global Dashboard Counters
+  globalStats = {
+    total:   0,
+    blocked: 0,
+    decoys:  0,
+    logged:  0,
+    byType:  {}
+  };
+
+  // We KEEP attackers (profiles) and blockedIPs as requested.
+
+  io.emit('reset'); // Tells dashboard to clear its feed and UI counters
+  
+  console.log('[Reset] Global counters and feed cleared — Attackers/Blocklists preserved');
+  saveState();
   res.json({ ok: true });
 });
 
