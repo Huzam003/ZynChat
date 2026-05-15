@@ -65,14 +65,15 @@ app.use(sessionMiddleware);
 let sw = null;
 if (process.env.SW_ENABLED === 'true') {
   try {
+    console.log('[ShieldWatch] ⏳ Loading RASP sensor...');
     sw = require('./shieldwatch-sensor');
     app.use(sw.httpMiddleware);
-    console.log('[ShieldWatch] ✅ RASP sensor ACTIVE — Cerebro:', process.env.SW_CEREBRO_ADDR || '127.0.0.1:50051');
+    console.log('[ShieldWatch] ✅ RASP sensor ACTIVE — Cerebro:', process.env.SW_CEREBRO_ADDR || 'localhost:3002');
   } catch (e) {
-    console.warn('[ShieldWatch] ⚠️  Sensor not loaded:', e.message);
+    console.error('[ShieldWatch] ❌ Sensor LOAD FAILURE:', e.stack || e.message);
   }
 } else {
-  console.log('[ShieldWatch] ⛔ Sensor DISABLED — app is UNPROTECTED (set SW_ENABLED=true to enable)');
+  console.log('[ShieldWatch] ⛔ Sensor DISABLED — app is UNPROTECTED');
 }
 
 // ─── Static Files ─────────────────────────────────────────────────────────────
