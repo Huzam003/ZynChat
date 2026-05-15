@@ -39,7 +39,7 @@ const server = http.createServer(app);
 const IS_PROD = process.env.NODE_ENV === 'production';
 
 const io     = new Server(server, { 
-  cors: { origin: false }, // Restricted CORS for Socket.io
+  cors: { origin: true, credentials: true }, // Allow session cookies
   path: '/sw.io/'
 });
 
@@ -99,6 +99,7 @@ io.use((socket, next) => {
   if (socket.request.session && socket.request.session.isAdmin) {
     next();
   } else {
+    console.error(`[Socket] 🔒 Unauthorized connection attempt from ${socket.handshake.address}`);
     next(new Error('Unauthorized'));
   }
 });
