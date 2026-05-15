@@ -22,43 +22,11 @@ const LOG_ONLY  = process.env.SW_LOG_ONLY === 'true';
 const API_TOKEN = process.env.SW_API_TOKEN || 'sw-internal-token-xyz';
 
 // ─── Shared Helpers ──────────────────────────────────────────────────────────
-// ─── IP Extraction (Standardized for ngrok/proxies) ───────────────────────────
 function extractIP(req) {
-  let ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.connection?.remoteAddress || '127.0.0.1';
-  if (ip.includes(',')) ip = ip.split(',')[0];
-  return ip.trim().replace(/^::ffff:/, '').replace(/^::1$/, '127.0.0.1');
+  const raw = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1')
+              .split(',')[0].trim();
+  return raw.replace(/^::ffff:/, '');
 }
-
-// ─── Block Enforcement Middleware ─────────────────────────────────────────────
-function checkBlocking(req, res) {
-  const ip = extractIP(req);
-  const fp = req.session?.fpId;
-  const sid = req.session?.username || req.session?.sessionKey || req.sessionID;
-
-  // 1. IP Block - DISABLED by request (to prevent network collateral)
-  /*
-  if (blockedIPs.has(ip)) {
-    return true;
-  }
-  */
-
-  // 2. Check Device Fingerprint Block (Global for device)
-  if (fp && blockedFingerprints.has(fp)) {
-    console.log(`[ShieldWatch] ⛔ Blocked Device attempt: ${fp}`);
-    return true;
-  }
-
-  // 3. Check Session Block (Surgical - This is what you want for demo!)
-  if (sid && blockedSessions.has(sid)) {
-    console.log(`[ShieldWatch] ⛔ Blocked Session attempt: ${sid}`);
-    return true;
-  }
-
-  return false;
-}
-
-// ─── Main HTTP Middleware ─────────────────────────────────────────────────────
-// (Removed duplicate)
 
 const MAX_TRACKER_SIZE = 10_000;
 
@@ -103,19 +71,11 @@ function fetchBlocklist() {
     res.on('data', c => data += c);
     res.on('end', () => {
       try {
-        if (res.statusCode !== 200) return;
         const list = JSON.parse(data);
-        if (Array.isArray(list)) {
-           blockedIPs.clear();
-           list.forEach(ip => blockedIPs.add(ip));
-           if (list.length > 0) {
-             console.log(`[ShieldWatch] 🚫 IP blocklist synced: ${list.length} IPs`);
-             if (global.onShieldWatchBlock) global.onShieldWatchBlock(); // Trigger instant kick
-           }
-        }
-      } catch (e) {
-        console.error("[ShieldWatch] ⚠️ IP sync error:", e.message);
-      }
+        blockedIPs.clear();
+        list.forEach(ip => blockedIPs.add(ip));
+        if (list.length > 0) console.log(`[ShieldWatch] 🚫 Blocklist synced: ${list.length} IPs`);
+      } catch {}
     });
   });
   req.on('error',   () => {});
@@ -123,9 +83,9 @@ function fetchBlocklist() {
   req.end();
 }
 
-// Sync IP blocklist immediately + every 3 seconds for instant demo blocking
+// Sync IP blocklist immediately + every 30 seconds
 fetchBlocklist();
-setInterval(fetchBlocklist, 3000);
+setInterval(fetchBlocklist, 30_000);
 
 // ─── Fingerprint Blocklist (synced from collector every 30s) ─────────────────
 const blockedFingerprints = new Set();
@@ -148,23 +108,11 @@ function fetchFingerprintBlocklist() {
     res.on('data', c => data += c);
     res.on('end', () => {
       try {
-        if (res.statusCode !== 200) {
-           // If dashboard says no, we don't assume everyone is unblocked
-           // but we log the error to debug why sync is failing
-           return;
-        }
         const list = JSON.parse(data);
-        if (Array.isArray(list)) {
-          blockedFingerprints.clear();
-          list.forEach(fp => blockedFingerprints.add(fp));
-          if (list.length > 0) {
-            console.log(`[ShieldWatch] 🔒 Fingerprint blocklist synced: ${list.length} hashes`);
-            if (global.onShieldWatchBlock) global.onShieldWatchBlock();
-          }
-        }
-      } catch (e) {
-        console.error("[ShieldWatch] ⚠️ Fingerprint sync error:", e.message);
-      }
+        blockedFingerprints.clear();
+        list.forEach(fp => blockedFingerprints.add(fp));
+        if (list.length > 0) console.log(`[ShieldWatch] 🔒 Fingerprint blocklist synced: ${list.length} hashes`);
+      } catch {}
     });
   });
   req.on('error',   () => {});
@@ -173,79 +121,7 @@ function fetchFingerprintBlocklist() {
 }
 
 fetchFingerprintBlocklist();
-setInterval(fetchFingerprintBlocklist, 3000);
-
-// ─── Session Blocklist (synced from collector every 3s) ──────────────────────
-const blockedSessions = new Set();
-
-const blockedSessions     = new Set();
-const blockedFingerprints = new Set();
-
-function fetchSessionBlocklist() {
-  const module_ = COLLECTOR.useHttps ? https : http;
-  const options  = {
-    hostname: COLLECTOR.host,
-    port:     COLLECTOR.port,
-    path:     '/api/blocked-sessions',
-    method:   'GET',
-    headers:  { 
-      'ngrok-skip-browser-warning': 'true',
-      'x-shieldwatch-token': API_TOKEN
-    },
-    timeout:  4000,
-  };
-  const req = module_.request(options, res => {
-    let data = '';
-    res.on('data', c => data += c);
-    res.on('end', () => {
-      try {
-        const list = JSON.parse(data);
-        blockedSessions.clear();
-        list.forEach(s => blockedSessions.add(s));
-      } catch {}
-    });
-  });
-  req.on('error', () => {});
-  req.on('timeout', () => req.destroy());
-  req.end();
-}
-
-function fetchFingerprintBlocklist() {
-  const module_ = COLLECTOR.useHttps ? https : http;
-  const options  = {
-    hostname: COLLECTOR.host,
-    port:     COLLECTOR.port,
-    path:     '/api/blocked-fp',
-    method:   'GET',
-    headers:  { 
-      'ngrok-skip-browser-warning': 'true',
-      'x-shieldwatch-token': API_TOKEN
-    },
-    timeout:  4000,
-  };
-  const req = module_.request(options, res => {
-    let data = '';
-    res.on('data', c => data += c);
-    res.on('end', () => {
-      try {
-        const list = JSON.parse(data);
-        blockedFingerprints.clear();
-        list.forEach(fp => blockedFingerprints.add(fp));
-      } catch {}
-    });
-  });
-  req.on('error', () => {});
-  req.on('timeout', () => req.destroy());
-  req.end();
-}
-
-// Initial Sync
-fetchSessionBlocklist();
-fetchFingerprintBlocklist();
-
-// Background Sync
-setInterval(fetchSessionBlocklist, 3000);
-setInterval(fetchFingerprintBlocklist, 3000);
+setInterval(fetchFingerprintBlocklist, 30_000);
 
 // ─── IDOR Detection ──────────────────────────────────────────────────────────
 function checkIDOR(req) {
@@ -380,7 +256,7 @@ const HONEYPOT_PATHS = new Set([
   '/wp-admin', '/.env',
 ]);
 
-// ─── Attack Patterns ─────────────────────────────────────────────────────────
+// ─── Attack Patterns (Hardened) ──────────────────────────────────────────────
 const PATTERNS = {
   sqli: [
     /'\s*(--|#|\/\*)/i,
@@ -392,7 +268,11 @@ const PATTERNS = {
     /'\s*=\s*'/i,
     /;\s*(DROP|ALTER|CREATE|INSERT|UPDATE|DELETE)\b/i,
     /\bsleep\s*\(/i,
+    /\bpg_sleep\s*\(/i,
     /\bwaitfor\s+delay\b/i,
+    /benchmark\s*\(/i,
+    /load_file\s*\(/i,
+    /into\s+outfile\b/i,
   ],
   xss: [
     /<script[\s>]/i,
@@ -410,6 +290,8 @@ const PATTERNS = {
     /vbscript\s*:/i,
     /<base[^>]+href/i,
     /&#x?[0-9a-f]+;/i,
+    /String\.fromCharCode/i,
+    /atob\s*\(/i,
   ],
   pathTraversal: [
     /\.\.\//,
@@ -420,11 +302,14 @@ const PATTERNS = {
     /%252e%252e/i,
     /\/etc\/passwd/i,
     /\/proc\/self/i,
+    /\/windows\/win\.ini/i,
+    /\/boot\.ini/i,
   ],
   cmdInjection: [
-    /[;&|`$]\s*(ls|cat|pwd|id|whoami|uname|curl|wget|bash|sh|python|perl)\b/i,
+    /[;&|`$]\s*(ls|cat|pwd|id|whoami|uname|curl|wget|bash|sh|python|perl|nc|netcat|ncat|php)\b/i,
     /`[^`]+`/,
     /\$\([^)]+\)/,
+    /\{[^\}]+\}/, // Braces expansion
   ],
 };
 
@@ -538,20 +423,26 @@ function buildEvent(req, threat, verdict) {
 function httpMiddleware(req, res, next) {
   const rawPath = (req.path || req.url || '/').split('?')[0];
 
-  // 1. MANDATORY BLOCK CHECK (Instant Rejection)
-  if (checkBlocking(req, res)) {
-    const ip = extractIP(req);
-    return res.status(403).send(`
-      <div style="background:#0f172a;color:#f87171;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;text-align:center;padding:20px;">
-        <h1 style="font-size:80px;margin:0">🚫</h1>
-        <h2 style="margin:20px 0;letter-spacing:2px;color:#fff;">ACCESS DENIED</h2>
-        <p style="color:#94a3b8;max-width:500px;line-height:1.6">This session has been permanently blacklisted by ShieldWatch. IP or Device Signature has been flagged for malicious activity.</p>
-        <div style="margin-top:30px;padding:15px 30px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:12px;font-family:monospace;color:#ef4444">
-          BLOCKED_ID: ${ip}
-        </div>
-        <p style="margin-top:40px;font-size:12px;color:#475569">ShieldWatch RASP Protection Active</p>
-      </div>
-    `);
+  // ── IP Blocklist check (highest priority) ────────────────────────────────────
+  const reqIP = extractIP(req);
+  if (blockedIPs.has(reqIP)) {
+    console.log(`[ShieldWatch] 🚫 BLOCKED IP: ${reqIP} tried ${rawPath}`);
+    return res.status(403).json({
+      ok: false, blocked: true,
+      error:  `Your IP (${reqIP}) has been permanently blocked by ShieldWatch.`,
+      threat: 'blocked_ip',
+    });
+  }
+
+  // ── Fingerprint block (survives VPN / IP rotation) ───────────────────────
+  const fpId = req.session?.fpId;
+  if (fpId && blockedFingerprints.has(fpId)) {
+    console.log(`[ShieldWatch] 🔒 BLOCKED FINGERPRINT: ${fpId.slice(0,12)}… | IP: ${reqIP} | path: ${rawPath}`);
+    return res.status(403).json({
+      ok: false, blocked: true,
+      error:  'Your device has been permanently blocked by ShieldWatch. Changing your IP will not help.',
+      threat: 'blocked_fingerprint',
+    });
   }
 
   // IDOR check
@@ -728,7 +619,6 @@ function reportNginxEvent(req, reason) {
 module.exports = { 
   httpMiddleware, 
   middleware: httpMiddleware, 
-  checkBlocking, // [NEW] Exporting for socket-level blocking
   inspectMessage, 
   detectThreats, 
   submitFingerprint, 

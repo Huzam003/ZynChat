@@ -52,10 +52,7 @@ const myAvatar        = $('myAvatar');
 const myUsername      = $('myUsername');
 const myRole          = $('myRole');
 // ─── Socket.io ────────────────────────────────────────────────────────────────
-const _swBase = (typeof ZynConfig !== 'undefined') ? ZynConfig.getBaseUrl() : '';
-const socket = _swBase
-  ? io(_swBase, { transports: ['websocket', 'polling'] })
-  : io({ transports: ['websocket', 'polling'] });
+const socket = io({ transports: ['websocket', 'polling'] });
 
 socket.on('connect', () => {
   console.log('[Socket] Connected', socket.id);

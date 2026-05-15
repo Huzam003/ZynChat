@@ -138,8 +138,6 @@
 
   <!-- ── CENTER: Live Event Feed ── -->
   <main class="panel panel-center">
-    <!-- Live Threat Feed -->
-
     <div class="panel-title">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
       Live Threat Feed
@@ -189,7 +187,6 @@
         <div class="profile-row"><span class="pr-lbl">IP Address</span><span class="pr-val mono" id="pIP">—</span></div>
         <div class="profile-row"><span class="pr-lbl">Status</span><span class="pr-val" id="pHoneypot">—</span></div>
         <div class="profile-row"><span class="pr-lbl">Mac Device ID</span><span class="pr-val mono" id="pFPID" style="color:#a855f7;font-size:10px">—</span></div>
-        <div class="profile-row" style="display:none"><span class="pr-lbl">VPN IPs</span><span class="pr-val mono" id="pVPNHistory" style="color:#f97316;font-size:11px">—</span></div>
       </div>
 
       <!-- Location -->
@@ -214,10 +211,6 @@
         <div class="profile-row"><span class="pr-lbl">OS</span><span class="pr-val" id="pOS">—</span></div>
         <div class="profile-row"><span class="pr-lbl">Screen</span><span class="pr-val" id="pScreen">—</span></div>
         <div class="profile-row"><span class="pr-lbl">Language</span><span class="pr-val" id="pLang">—</span></div>
-        <div class="profile-row"><span class="pr-lbl">Timezone</span><span class="pr-val" id="pFPTZ">—</span></div>
-        <div class="profile-row"><span class="pr-lbl">CPU Cores</span><span class="pr-val" id="pCores">—</span></div>
-        <div class="profile-row"><span class="pr-lbl">GPU</span><span class="pr-val" id="pGPU">—</span></div>
-        <div class="profile-row"><span class="pr-lbl">Touch</span><span class="pr-val" id="pTouch">—</span></div>
       </div>
 
       <!-- Attack Summary -->
@@ -229,7 +222,7 @@
       <!-- Block Actions (Surgical Only) -->
       <div style="padding: 0 16px 8px; display:flex; flex-direction:column; gap:8px;">
         <div style="display:flex; gap:8px;">
-          <button class="block-ip-btn" id="blockSessionBtn" onclick="blockCurrentSession()" style="flex:1; background:rgba(234,179,8,0.15); color:#eab308; border-color:rgba(234,179,8,0.35)">
+          <button class="block-ip-btn" id="blockSessionBtn" onclick="blockCurrentSession()" style="flex:1; background:rgba(234,179,8,0.15); color:#eab308; border-color:rgba(234179,8,0.35)">
             ✂️ Kill Session (Kick)
           </button>
           <button class="unblock-ip-btn" id="unblockSessionBtn" onclick="unblockCurrentSession()" style="display:none; flex:1">

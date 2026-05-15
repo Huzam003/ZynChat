@@ -682,18 +682,21 @@ app.post('/api/unblock', requireAdmin, (req, res) => {
   res.json({ ok: true, unblocked: clean });
 });
 
-// ─── Reset (Clear Feed Only) ──────────────────────────────────────────────────
+// ─── Reset (demo convenience) ─────────────────────────────────────────────────
 app.post('/api/reset', requireAdmin, (req, res) => {
+  if (req.body.confirmToken !== 'CONFIRM_RESET') {
+    return res.status(400).json({ ok: false, error: 'Reset confirmation token required' });
+  }
   events.splice(0);
-  lastEventHash = null; // Reset the chain hash
-  
-  // We do NOT clear attackers, blockedIPs, or any other metadata
-  // This keeps the profile history intact while clearing the visual feed.
-
-  io.emit('reset'); // Tells dashboard to clear the feed UI
-  
-  console.log('[Reset] Threat feed cleared — Attacker profiles preserved');
-  saveState();
+  attackers.clear();
+  geoCache.clear();
+  blockedIPs.clear();
+  blockedFingerprints.clear();
+  fingerprintIndex.clear();
+  io.emit('reset');
+  io.emit('blocked_update', []);
+  io.emit('blocked_fp_update', []);
+  console.log('[Reset] All data cleared');
   res.json({ ok: true });
 });
 

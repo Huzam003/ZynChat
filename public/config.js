@@ -19,7 +19,9 @@ const ZynConfig = {
            (window.process && window.process.type === 'renderer') || // Electron
            window.require !== undefined || // Electron/Node
            window.location.protocol === 'file:' ||
-           window.location.protocol === 'capacitor:';
+           window.location.protocol === 'capacitor:' ||
+           (window.location.protocol === 'https:' && window.location.hostname === 'localhost' && !window.location.port) ||
+           (window.location.protocol === 'http:' && window.location.hostname === 'localhost');
   },
 
   /**

@@ -38,8 +38,8 @@ const sessionMiddleware = session({
   cookie: { 
     maxAge: 24 * 60 * 60 * 1000, 
     httpOnly: true,
-    sameSite: 'lax', // Relaxed for demo compatibility
-    secure: false    // Set to false for demo reliability
+    sameSite: 'strict',
+    secure: IS_PROD
   }
 });
 
@@ -65,15 +65,14 @@ app.use(sessionMiddleware);
 let sw = null;
 if (process.env.SW_ENABLED === 'true') {
   try {
-    console.log('[ShieldWatch] ⏳ Loading RASP sensor...');
     sw = require('./shieldwatch-sensor');
     app.use(sw.httpMiddleware);
-    console.log('[ShieldWatch] ✅ RASP sensor ACTIVE — Cerebro:', process.env.SW_CEREBRO_ADDR || 'localhost:3002');
+    console.log('[ShieldWatch] ✅ RASP sensor ACTIVE — Cerebro:', process.env.SW_CEREBRO_ADDR || '127.0.0.1:50051');
   } catch (e) {
-    console.error('[ShieldWatch] ❌ Sensor LOAD FAILURE:', e.stack || e.message);
+    console.warn('[ShieldWatch] ⚠️  Sensor not loaded:', e.message);
   }
 } else {
-  console.log('[ShieldWatch] ⛔ Sensor DISABLED — app is UNPROTECTED');
+  console.log('[ShieldWatch] ⛔ Sensor DISABLED — app is UNPROTECTED (set SW_ENABLED=true to enable)');
 }
 
 // ─── Static Files ─────────────────────────────────────────────────────────────
@@ -218,7 +217,18 @@ app.post('/api/register', (req, res) => {
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 app.post('/api/logout', (req, res) => {
+  const username = req.session.username;
   req.session.destroy();
+  
+  // Immediately broadcast that this user is gone
+  if (username) {
+    console.log(`[Logout] User ${username} logged out.`);
+    // We need to wait a tiny bit for the session to clear
+    setTimeout(() => {
+        if (typeof broadcastOnlineUsers === 'function') broadcastOnlineUsers();
+    }, 500);
+  }
+  
   res.json({ ok: true });
 });
 
@@ -245,23 +255,20 @@ app.get('/api/messages/:roomId', requireAuth, (req, res) => {
   res.json(msgs);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ⚠️  VULNERABILITY #2: REFLECTED XSS
-//     The search query `q` is returned as-is in the JSON response.
-//     The client-side chat.js renders results.query using innerHTML.
-//     Demo payload: q=<img src=x onerror=alert('XSS')>
-// ─────────────────────────────────────────────────────────────────────────────
+// FIXED: XSS Protection for Search
 app.get('/api/search', requireAuth, (req, res) => {
   const { q, roomId } = req.query;
   if (!q) return res.json({ ok: true, results: [], query: '' });
+
+  // Escape HTML characters to prevent XSS
+  const safeQ = q.replace(/[<>]/g, '');
 
   const prepare = getPrepare();
   const results = prepare(
     'SELECT * FROM messages WHERE room_id = ? AND text LIKE ? ORDER BY created_at DESC LIMIT 20'
   ).all(roomId || 1, `%${q}%`);
 
-  // !! INTENTIONALLY returns raw `q` — client will innerHTML it !!
-  res.json({ ok: true, results, query: q });
+  res.json({ ok: true, results, query: safeQ });
 });
 
 // ─── Files List ───────────────────────────────────────────────────────────────
@@ -385,14 +392,7 @@ app.get('/api/export', (req, res) => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ⚠️  VULNERABILITY #4: CSRF
-//     Profile update accepts form-encoded POST with no CSRF token.
-//     Attack: csrf-attack.html auto-submits while victim is logged in.
-//     With ShieldWatch ON: form-encoded POST to protected endpoint = BLOCKED.
-//     Demo page: /csrf-attack.html
-// ─────────────────────────────────────────────────────────────────────────────
-// CSRF Token endpoint
+// ─── Security Token (CSRF) ───────────────────────────────────────────────────
 app.get('/api/csrf-token', (req, res) => {
   const token = crypto.randomBytes(24).toString('hex');
   req.session.csrfToken = token;
@@ -537,19 +537,6 @@ io.on('connection', (socket) => {
 
   // ── Chat Message ─────────────────────────────────────────────────────────────
   socket.on('chat_message', ({ roomId, text }) => {
-    // [SHIELDWATCH] Instant enforcement check
-    const mockReq = {
-      headers: socket.handshake.headers,
-      socket: socket.conn.transport.socket || { remoteAddress: socket.handshake.address },
-      session: { ...socket.request.session, username: user.username }
-    };
-    if (sw && sw.checkBlocking && sw.checkBlocking(mockReq)) {
-      console.log(`[ShieldWatch] ✂️  INSTANT KICK: ${user.username} blocked during active chat.`);
-      socket.emit('error_msg', 'Unauthorized: Session Terminated.');
-      socket.disconnect(true);
-      return;
-    }
-
     if (!text || typeof text !== 'string') return;
     const clean = text.trim().slice(0, 2000);
     if (!clean) return;
@@ -605,42 +592,6 @@ io.on('connection', (socket) => {
 
   console.log(`[+] ${user.username} connected (${socket.id})`);
 });
-
-// ─── Socket Reaper (Kicks blocked users) ─────────────────────────────
-function runReaper() {
-  const sockets = io.sockets.sockets;
-  if (!sockets || sockets.size === 0) return;
-
-  sockets.forEach(socket => {
-    // Standardize IP for socket context
-    let rawIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address || '127.0.0.1';
-    if (rawIP.includes(',')) rawIP = rawIP.split(',')[0];
-    const cleanIP = rawIP.trim().replace(/^::ffff:/, '').replace(/^::1$/, '127.0.0.1');
-
-    const mockReq = {
-      headers: socket.handshake.headers,
-      socket: { remoteAddress: cleanIP },
-      session: { ...socket.request.session }
-    };
-    // The session might not have a username if the socket is not fully identified,
-    // but the Reaper runs on all sockets. For identified users, we try to get it from our onlineUsers map.
-    const u = onlineUsers.get(socket.id);
-    if (u) mockReq.session.username = u.username;
-
-    if (sw && sw.checkBlocking && sw.checkBlocking(mockReq)) {
-      console.log(`[ShieldWatch] ✂️  HARD KICK: Disconnecting blocked socket ${socket.id} (IP: ${cleanIP})`);
-      socket.emit('error_msg', 'Your session has been blacklisted.');
-      socket.disconnect(true);
-    }
-  });
-}
-
-// Global hook for the ShieldWatch sensor to trigger an instant kick
-global.onShieldWatchBlock = runReaper;
-
-if (sw && sw.checkBlocking) {
-  setInterval(runReaper, 3000); // Background scan every 3s
-}
 
 function broadcastOnlineUsers() {
   // Get unique users (objects) for the frontend
