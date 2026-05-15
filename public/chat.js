@@ -525,9 +525,17 @@ async function saveProfile(avatarColor) {
   btn.textContent = 'Saving...';
 
   try {
+    // 1. Fetch CSRF token
+    const csrfRes = await fetch('/api/csrf-token');
+    const { csrfToken } = await csrfRes.json();
+
+    // 2. Submit update with token
     const res = await fetch('/api/profile/update', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'x-csrf-token': csrfToken
+      },
       body: JSON.stringify({ bio, avatar_color: avatarColor })
     });
     

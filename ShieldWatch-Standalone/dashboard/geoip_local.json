@@ -1,0 +1,5 @@
+{
+  "127.0.0.1": { "country": "Localhost", "city": "Internal", "org": "ShieldWatch Core" },
+  "192.168":   { "country": "Local Network", "city": "Private", "org": "LAN Client" },
+  "10.0":      { "country": "Private Cloud", "city": "VPC", "org": "Internal Infrastructure" }
+}

@@ -13,29 +13,52 @@ const session        = require('express-session');
 const path           = require('path');
 const fs             = require('fs');
 const cors           = require('cors');
+const helmet         = require('helmet');
+const bcrypt         = require('bcrypt');
+const crypto         = require('crypto');
 const { exec }       = require('child_process');
 const { initDB, getDB, getPrepare, execVulnerable } = require('./database');
 
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] }
+  cors: { origin: false } // Restricted Socket.io CORS
 });
 
+const IS_PROD = process.env.NODE_ENV === 'production';
 const PORT           = process.env.PORT || 3001;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'zynchat-dev-secret-2024';
 
 // ─── Session Middleware (shared with Socket.io) ───────────────────────────────
 const sessionMiddleware = session({
+  name:              'zyn.sid',
   secret:            SESSION_SECRET,
   resave:            false,
   saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000, httpOnly: true }
+  cookie: { 
+    maxAge: 24 * 60 * 60 * 1000, 
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: IS_PROD
+  }
 });
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.disable('x-powered-by');
+// app.use(cors()); // REMOVED for hardening - only use specific origins if needed
+app.use(helmet({ 
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "script-src": ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+      "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+      "font-src": ["'self'", "fonts.gstatic.com"],
+      "img-src": ["'self'", "data:", "https:"],
+      "connect-src": ["'self'", "ws:", "wss:"],
+    }
+  }
+}));
+app.use(express.json({ limit: '512kb' }));
+app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 app.use(sessionMiddleware);
 
 // ─── ShieldWatch RASP Sensor (optional) ───────────────────────────────────────
@@ -92,7 +115,7 @@ app.get('/api/security/nginx-block', (req, res) => {
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/ping', (req, res) => {
-  res.json({ status: 'online', app: 'zynchat', version: '2.0.0', shieldwatch: !!sw });
+  res.json({ status: 'online', app: 'zynchat', version: '2.2.0-hardened', shieldwatch: !!sw });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,9 +143,9 @@ app.post('/api/login', (req, res) => {
 
   try {
     const prepare = getPrepare();
-    const user    = prepare('SELECT * FROM users WHERE username = ? AND password = ?').get(username, password);
+    const user    = prepare('SELECT * FROM users WHERE username = ?').get(username);
 
-    if (!user) {
+    if (!user || !bcrypt.compareSync(password, user.password)) {
       // Notify ShieldWatch of failed login (brute force tracking)
       if (sw && sw.trackLoginFailure) {
         const blocked = sw.trackLoginFailure(req);
@@ -175,7 +198,8 @@ app.post('/api/register', (req, res) => {
   const color   = palette[Math.floor(Math.random() * palette.length)];
 
   try {
-    prepare('INSERT INTO users (username, password, avatar_color) VALUES (?, ?, ?)').run(username.trim(), password, color);
+    const hashedPassword = bcrypt.hashSync(password, 12);
+    prepare('INSERT INTO users (username, password, avatar_color) VALUES (?, ?, ?)').run(username.trim(), hashedPassword, color);
 
     const user = prepare('SELECT * FROM users WHERE username = ?').get(username.trim());
     req.session.userId   = user.id;
@@ -193,7 +217,18 @@ app.post('/api/register', (req, res) => {
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 app.post('/api/logout', (req, res) => {
+  const username = req.session.username;
   req.session.destroy();
+  
+  // Immediately broadcast that this user is gone
+  if (username) {
+    console.log(`[Logout] User ${username} logged out.`);
+    // We need to wait a tiny bit for the session to clear
+    setTimeout(() => {
+        if (typeof broadcastOnlineUsers === 'function') broadcastOnlineUsers();
+    }, 500);
+  }
+  
   res.json({ ok: true });
 });
 
@@ -220,23 +255,20 @@ app.get('/api/messages/:roomId', requireAuth, (req, res) => {
   res.json(msgs);
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ⚠️  VULNERABILITY #2: REFLECTED XSS
-//     The search query `q` is returned as-is in the JSON response.
-//     The client-side chat.js renders results.query using innerHTML.
-//     Demo payload: q=<img src=x onerror=alert('XSS')>
-// ─────────────────────────────────────────────────────────────────────────────
+// FIXED: XSS Protection for Search
 app.get('/api/search', requireAuth, (req, res) => {
   const { q, roomId } = req.query;
   if (!q) return res.json({ ok: true, results: [], query: '' });
+
+  // Escape HTML characters to prevent XSS
+  const safeQ = q.replace(/[<>]/g, '');
 
   const prepare = getPrepare();
   const results = prepare(
     'SELECT * FROM messages WHERE room_id = ? AND text LIKE ? ORDER BY created_at DESC LIMIT 20'
   ).all(roomId || 1, `%${q}%`);
 
-  // !! INTENTIONALLY returns raw `q` — client will innerHTML it !!
-  res.json({ ok: true, results, query: q });
+  res.json({ ok: true, results, query: safeQ });
 });
 
 // ─── Files List ───────────────────────────────────────────────────────────────
@@ -360,17 +392,21 @@ app.get('/api/export', (req, res) => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ⚠️  VULNERABILITY #4: CSRF
-//     Profile update accepts form-encoded POST with no CSRF token.
-//     Attack: csrf-attack.html auto-submits while victim is logged in.
-//     With ShieldWatch ON: form-encoded POST to protected endpoint = BLOCKED.
-//     Demo page: /csrf-attack.html
-// ─────────────────────────────────────────────────────────────────────────────
-// FIXED: CSRF Protection (Simplified for demo)
-// In a real app, we would use a CSRF token.
-// Here we ensure it's a JSON request from an authenticated session.
+// ─── Security Token (CSRF) ───────────────────────────────────────────────────
+app.get('/api/csrf-token', (req, res) => {
+  const token = crypto.randomBytes(24).toString('hex');
+  req.session.csrfToken = token;
+  res.json({ csrfToken: token });
+});
+
+// FIXED: CSRF Protection with double-submit token pattern
 app.post('/api/profile/update', requireAuth, (req, res) => {
+  const clientToken = req.headers['x-csrf-token'];
+  if (!clientToken || clientToken !== req.session.csrfToken) {
+    if (sw) sw.reportThreat(req, 'csrf', { reason: 'Missing or invalid CSRF token' });
+    return res.status(403).json({ ok: false, error: 'CSRF validation failed' });
+  }
+
   const { bio, avatar_color, username } = req.body;
   const prepare = getPrepare();
   
@@ -558,7 +594,24 @@ io.on('connection', (socket) => {
 });
 
 function broadcastOnlineUsers() {
-  io.emit('users_update', Array.from(onlineUsers.values()));
+  // Get unique users (objects) for the frontend
+  const seen = new Set();
+  const uniqueUsers = [];
+  
+  for (const u of onlineUsers.values()) {
+    if (!seen.has(u.username)) {
+      seen.add(u.username);
+      uniqueUsers.push(u);
+    }
+  }
+  
+  // Send objects to frontend (chat.js)
+  io.emit('users_update', uniqueUsers);
+  
+  // Send simple username list to ShieldWatch dashboard
+  if (sw && sw.syncActiveUsers) {
+    sw.syncActiveUsers(uniqueUsers.map(u => u.username));
+  }
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────

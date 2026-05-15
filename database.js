@@ -7,6 +7,7 @@
 const initSqlJs = require('sql.js');
 const path      = require('path');
 const fs        = require('fs');
+const bcrypt    = require('bcrypt');
 
 const DB_PATH = path.join(__dirname, 'zynchat.db');
 
@@ -129,10 +130,16 @@ async function initDB() {
     { username: 'attacker', password: 'hack3r',   role: 'user',  color: '#f59e0b', bio: 'Security Researcher' },
   ];
   for (const u of demoUsers) {
+    const hashedPassword = bcrypt.hashSync(u.password, 12);
     db.run(
       `INSERT OR IGNORE INTO users (username, password, role, avatar_color, bio) VALUES (?, ?, ?, ?, ?)`,
-      [u.username, u.password, u.role, u.color, u.bio]
+      [u.username, hashedPassword, u.role, u.color, u.bio]
     );
+    // Migration: If user already exists but has plain text password, update it
+    const existing = prepare('SELECT password FROM users WHERE username = ?').get(u.username);
+    if (existing && existing.password === u.password) {
+       db.run('UPDATE users SET password = ? WHERE username = ?', [hashedPassword, u.username]);
+    }
   }
 
   // ─── Seed Rooms ───────────────────────────────────────────────────────────────

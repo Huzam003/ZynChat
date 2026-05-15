@@ -500,6 +500,17 @@ body.light-theme .theme-toggle { border-color: var(--purple); color: var(--purpl
   letter-spacing: 0.3px;
 }
 
+.feed-hash {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--purple);
+  background: rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  padding: 1px 6px;
+  border-radius: 4px;
+  cursor: help;
+}
+
 .feed-time {
   margin-left: auto;
   font-size: 11px;
