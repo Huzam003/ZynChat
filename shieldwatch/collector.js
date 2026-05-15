@@ -652,6 +652,7 @@ app.post('/api/block-fp', requireAdmin, (req, res) => {
   blockedFingerprints.add(fpId);
   console.log(`[Block-FP] 🔒 Fingerprint blocked: ${fpId.slice(0,12)}… | total: ${blockedFingerprints.size}`);
   io.emit('blocked_fp_update', Array.from(blockedFingerprints));
+  saveState();
   res.json({ ok: true, blocked: fpId });
 });
 
@@ -661,6 +662,7 @@ app.post('/api/unblock-fp', requireAdmin, (req, res) => {
   blockedFingerprints.delete(fpId);
   console.log(`[Unblock-FP] ✅ Fingerprint unblocked: ${fpId.slice(0,12)}…`);
   io.emit('blocked_fp_update', Array.from(blockedFingerprints));
+  saveState();
   res.json({ ok: true, unblocked: fpId });
 });
 

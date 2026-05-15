@@ -86,30 +86,51 @@
       fp.canvasHash = c2.toDataURL().slice(-32); // last 32 chars as fingerprint
     } catch (e) {}
 
+    // ── Audio Fingerprint (Extremely stable cross-browser) ──────────────────
+    try {
+      var audioCtx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100, 44100);
+      var oscillator = audioCtx.createOscillator();
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(10000, audioCtx.currentTime);
+      var compressor = audioCtx.createDynamicsCompressor();
+      compressor.threshold.setValueAtTime(-50, audioCtx.currentTime);
+      compressor.knee.setValueAtTime(40, audioCtx.currentTime);
+      compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
+      compressor.attack.setValueAtTime(0, audioCtx.currentTime);
+      compressor.release.setValueAtTime(0.25, audioCtx.currentTime);
+      oscillator.connect(compressor);
+      compressor.connect(audioCtx.destination);
+      oscillator.start(0);
+      audioCtx.startRendering().then(function(buffer) {
+        var audioData = buffer.getChannelData(0).slice(4500, 5000);
+        var audioSum = 0;
+        for (var i = 0; i < audioData.length; i++) audioSum += Math.abs(audioData[i]);
+        fp.audioHash = audioSum.toString().slice(0, 16);
+      });
+    } catch (e) { fp.audioHash = 'none'; }
+
     // ── Stable device ID — hardware signals, not rendering ───────────────────
-    // Combines platform, CPU cores, RAM, screen, GPU into one compact hash.
-    // Stays constant across browser switches, VPN rotations, cookie clears.
-    // On a Mac: MacIntel/MacARM + core count + RAM + Retina res + GPU model.
     (function buildDeviceId() {
+      // Normalize GPU (Remove "ANGLE", "Direct3D", driver versions etc)
+      var cleanGpu = (fp.gpu || '').split(' (')[0].split(' vs_')[0].replace(/ANGLE |Direct3D11 |OpenGL /g, '').trim();
+
       var hwParts = [
-        fp.platform   || '',   // "MacIntel" / "MacARM" / "Win32" / "Linux x86_64"
-        fp.cores      || '',   // CPU logical cores (e.g. 10 for M3 Pro)
-        fp.memory     || '',   // Device RAM in GB (e.g. 16)
-        fp.screen     || '',   // e.g. "2560x1600"
-        fp.pixelRatio || '',   // e.g. 2 for Retina
-        fp.colorDepth || '',   // e.g. 30
-        fp.gpu        || '',   // e.g. "Apple M3 Pro"
-        fp.gpuVendor  || ''    // e.g. "Apple"
+        fp.platform   || '',
+        fp.cores      || '',
+        fp.memory     || '',
+        fp.screen     || '',
+        fp.pixelRatio || '',
+        cleanGpu      || '',
+        fp.audioHash  || 'stable'
       ];
       var raw = hwParts.join('|');
-      // FNV-1a 32-bit hash → compact 8-char hex device fingerprint
       var h = 0x811c9dc5;
       for (var i = 0; i < raw.length; i++) {
         h ^= raw.charCodeAt(i);
         h  = Math.imul(h, 0x01000193) >>> 0;
       }
       fp.deviceId  = h.toString(16).padStart(8, '0');
-      fp.deviceRaw = raw; // human-readable for dashboard display
+      fp.deviceRaw = raw; 
     })();
 
     // Current page

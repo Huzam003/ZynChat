@@ -523,17 +523,86 @@ function updateBlockBtn(a) {
 function renderBlockedList() {
   const el    = $('blockedList');
   const count = $('blockedCount');
-  const list  = Array.from(blockedIPSet);
-  if (count) count.textContent = list.length;
-  if (!list.length) {
-    el.innerHTML = '<div class="attack-empty">No IPs blocked</div>';
+  
+  // Aggregate all blocks for the counter
+  const totalCount = blockedIPSet.size + blockedFPSet.size + blockedSessionSet.size;
+  if (count) count.textContent = totalCount;
+
+  if (totalCount === 0) {
+    el.innerHTML = '<div class="attack-empty">No active blocks</div>';
     return;
   }
-  el.innerHTML = list.map(ip => `
-    <div class="blocked-ip-row">
-      <span class="blocked-ip-addr">🚫 ${escHtml(ip)}</span>
-      <button class="unblock-btn" onclick="unblockIP('${escHtml(ip)}')">Unblock</button>
-    </div>`).join('');
+
+  let html = '';
+
+  // 1. IPs (Legacy/Shield)
+  blockedIPSet.forEach(ip => {
+    html += `
+      <div class="blocked-ip-row">
+        <span class="blocked-ip-addr"><span class="badge badge-yellow">IP</span> 🚫 ${escHtml(ip)}</span>
+        <button class="unblock-btn" onclick="unblockIP('${escHtml(ip)}')">Unblock</button>
+      </div>`;
+  });
+
+  // 2. Fingerprints (Device)
+  blockedFPSet.forEach(fp => {
+    html += `
+      <div class="blocked-ip-row">
+        <span class="blocked-ip-addr"><span class="badge badge-purple">DEV</span> 🚫 ${escHtml(fp.slice(0,12))}…</span>
+        <button class="unblock-btn" onclick="unblockFingerprint('${escHtml(fp)}')">Unblock</button>
+      </div>`;
+  });
+
+  // 3. Sessions (Surgical)
+  blockedSessionSet.forEach(sid => {
+    html += `
+      <div class="blocked-ip-row">
+        <span class="blocked-ip-addr"><span class="badge badge-red">SESS</span> 🚫 ${escHtml(sid)}</span>
+        <button class="unblock-btn" onclick="unblockSession('${escHtml(sid)}')">Unblock</button>
+      </div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+// Helper to find attacker by session/fp for UI convenience
+function findAttackerBySession(sid) { return allAttackers.find(a => a.session === sid); }
+function findAttackerByFP(fp) { return allAttackers.find(a => a.fpId === fp); }
+
+async function unblockFingerprint(fpId) {
+  try {
+    const res = await fetch('api/unblock-fp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fpId })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      blockedFPSet.delete(fpId);
+      const a = findAttackerByFP(fpId);
+      if (a) updateBlockBtn(a);
+      renderBlockedList();
+      showToast(`✅ Device Fingerprint unblocked`, 'green');
+    }
+  } catch (e) { console.error(e); }
+}
+
+async function unblockSession(session) {
+  try {
+    const res = await fetch('api/unblock-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      blockedSessionSet.delete(session);
+      const a = findAttackerBySession(session);
+      if (a) updateBlockBtn(a);
+      renderBlockedList();
+      showToast(`✅ Session unblocked`, 'green');
+    }
+  } catch (e) { console.error(e); }
 }
 
 async function unblockIP(ip) {
