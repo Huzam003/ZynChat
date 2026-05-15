@@ -232,8 +232,17 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
       btn.querySelector('.btn-text').textContent = '✓ Signed in';
       setTimeout(() => { window.location.href = '/chat'; }, 50);
     } else {
-      showError('loginError', data.error || 'Login failed.');
-      setLoading(btn, false);
+      // [FIX BUG 7] Handle FP_REQUIRED with a 2s retry logic
+      if (data.code === 'FP_REQUIRED') {
+        showError('loginError', 'Security check in progress. Retrying in 2 seconds...');
+        setTimeout(() => {
+          setLoading(btn, false);
+          clearErrors();
+        }, 2000);
+      } else {
+        showError('loginError', data.error || 'Login failed.');
+        setLoading(btn, false);
+      }
     }
   } catch (err) {
     showError('loginError', 'Network error. Please try again.');

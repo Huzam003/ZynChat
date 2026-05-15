@@ -135,11 +135,6 @@ async function initDB() {
       `INSERT OR IGNORE INTO users (username, password, role, avatar_color, bio) VALUES (?, ?, ?, ?, ?)`,
       [u.username, hashedPassword, u.role, u.color, u.bio]
     );
-    // Migration: If user already exists but has plain text password, update it
-    const existing = prepare('SELECT password FROM users WHERE username = ?').get(u.username);
-    if (existing && existing.password === u.password) {
-       db.run('UPDATE users SET password = ? WHERE username = ?', [hashedPassword, u.username]);
-    }
   }
 
   // ─── Seed Rooms ───────────────────────────────────────────────────────────────

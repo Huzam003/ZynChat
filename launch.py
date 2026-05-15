@@ -37,57 +37,53 @@ C_RED = "\033[91m"
 C_RST = "\033[0m"
 C_BOLD = "\033[1m"
 
-def update_render_env(enabled):
+def safe_update_render_env(key, value, trigger_redeploy=False):
+    """Safely updates a Render env var by fetching current ones first to prevent deletion."""
     if RENDER_API_KEY == "your_render_api_key_here":
-        print(f"{C_RED}[!] Error: Render API Key not set in launch.py{C_RST}")
-        return
+        print(f"{C_RED}[!] Error: Render API Key not set{C_RST}")
+        return False
 
-    val = "true" if enabled else "false"
-    print(f"{C_YLW}[*] Updating Render Environment: SW_ENABLED={val}...{C_RST}")
-    
-    headers = {
-        "Authorization": f"Bearer {RENDER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    # Render API expects a list of env vars to update/patch
+    print(f"{C_YLW}[*] Safe Syncing Render: {key}={value}...{C_RST}")
+    headers = {"Authorization": f"Bearer {RENDER_API_KEY}", "Content-Type": "application/json"}
     url = f"https://api.render.com/v1/services/{SERVICE_ID}/env-vars"
-    data = [{"key": "SW_ENABLED", "value": val}]
     
     try:
-        # Use PATCH to update/add without deleting other variables
-        response = requests.patch(url, headers=headers, json=data)
-        if response.status_code in [200, 201, 202, 204]:
-            print(f"{C_GRN}[+] Render updated successfully!{C_RST}")
-            # Now trigger a cache-cleared redeploy
-            clear_cache_and_redeploy()
+        res = requests.get(url, headers=headers)
+        if res.status_code != 200:
+            print(f"{C_RED}[-] Failed to fetch current vars: {res.text}{C_RST}")
+            return False
+        
+        current_data = res.json()
+        new_list = []
+        found = False
+        for item in current_data:
+            ev = item.get("envVar", {})
+            k, v = ev.get("key"), ev.get("value")
+            if k == key:
+                new_list.append({"key": k, "value": value})
+                found = True
+            else:
+                new_list.append({"key": k, "value": v})
+        if not found: new_list.append({"key": key, "value": value})
+
+        response = requests.put(url, headers=headers, json=new_list)
+        if response.status_code in [200, 201, 202]:
+            print(f"{C_GRN}[+] Render updated successfully! (Full state preserved){C_RST}")
+            if trigger_redeploy: clear_cache_and_redeploy()
+            return True
         else:
             print(f"{C_RED}[-] Render API Error: {response.status_code} - {response.text}{C_RST}")
+            return False
     except Exception as e:
-        print(f"{C_RED}[-] Connection failed: {e}{C_RST}")
+        print(f"{C_RED}[-] Sync Exception: {e}{C_RST}")
+        return False
+
+def update_render_env(enabled):
+    val = "true" if enabled else "false"
+    return safe_update_render_env("SW_ENABLED", val, trigger_redeploy=True)
 
 def update_render_env_var(key, value):
-    if RENDER_API_KEY == "your_render_api_key_here":
-        return False
-
-    print(f"{C_YLW}[*] Syncing Render Config: {key}={value}...{C_RST}")
-    
-    headers = {
-        "Authorization": f"Bearer {RENDER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
-    url = f"https://api.render.com/v1/services/{SERVICE_ID}/env-vars"
-    # Note: We use PUT which replaces the whole list or PATCH? 
-    # Render API PATCH /env-vars actually updates/adds. 
-    # Let's use the same logic as before but for dynamic key.
-    data = [{"key": key, "value": value}]
-    
-    try:
-        response = requests.patch(url, headers=headers, json=data)
-        return response.status_code in [200, 201, 202, 204]
-    except:
-        return False
+    return safe_update_render_env(key, value, trigger_redeploy=False)
 
 def get_ngrok_url():
     try:
@@ -302,16 +298,21 @@ def launch_local_dashboard():
     
     try:
         # Run collector (Show logs)
+        import threading
         collector_proc = subprocess.Popen(["node", "shieldwatch/collector.js"])
         
-        # Start Scrolling Monitor in this thread
-        monitor_live_status()
+        # [FIX BUG 10] Run monitor in daemon thread so it doesn't block collector wait
+        monitor_thread = threading.Thread(target=monitor_live_status, daemon=True)
+        monitor_thread.start()
         
+        collector_proc.wait()
     except KeyboardInterrupt:
         print(f"\n{C_YLW}[*] Shutting down...{C_RST}")
         if ngrok_proc: ngrok_proc.terminate()
         collector_proc.terminate()
         subprocess.run("pkill -9 ngrok", shell=True)
+    except Exception as e:
+        print(f"{C_RED}[-] Startup Error: {e}{C_RST}")
 
 if __name__ == "__main__":
     os.system('clear' if os.name == 'posix' else 'cls')

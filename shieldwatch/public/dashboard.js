@@ -7,6 +7,7 @@ let allAttackers    = [];
 let selectedSession = null;
 let blockedIPSet    = new Set();
 let blockedFPSet    = new Set();
+let blockedSessionSet = new Set(); // [NEW] Surgical session blocks
 let threatChart     = null;
 const timelineBuckets = new Array(120).fill(0); // 120 seconds = 2 mins
 
@@ -29,10 +30,11 @@ socket.on('connect_error', (err) => {
   }
 });
 
-socket.on('init', ({ events, attackers, blocked = [], blockedFPs = [] }) => {
+socket.on('init', ({ events, attackers, blocked = [], blockedFPs = [], blockedSessions = [] }) => {
   allAttackers      = attackers;
   blockedIPSet      = new Set(blocked);
   blockedFPSet      = new Set(blockedFPs);
+  blockedSessionSet = new Set(blockedSessions);
   events.slice().reverse().forEach(e => prependFeedItem(e, false));
   renderLeft(attackers);
   renderBlockedList();
@@ -40,13 +42,14 @@ socket.on('init', ({ events, attackers, blocked = [], blockedFPs = [] }) => {
   if (attackers.length > 0) selectAttacker(attackers[0]);
 });
 
-socket.on('blocked_update', (list) => {
+socket.on('blocked_update', list => {
   blockedIPSet = new Set(list);
   renderBlockedList();
-  if (selectedSession) {
-    const a = allAttackers.find(x => x.session === selectedSession);
-    if (a) updateBlockBtn(a);
-  }
+});
+
+socket.on('blocked_session_update', list => {
+  blockedSessionSet = new Set(list);
+  // Profile refresh happens on next select
 });
 
 socket.on('blocked_fp_update', (list) => {
@@ -79,14 +82,29 @@ socket.on('attackers_update', (attackers) => {
 });
 
 socket.on('reset', () => {
-  $('feed').innerHTML = '<div class="feed-empty" id="feedEmpty"><div class="feed-empty-icon">🛡️</div><div>Monitoring NexaChat — no threats detected</div><div class="feed-empty-sub">Attacks will appear here in real-time</div></div>';
+  $('feed').innerHTML = '<div class="feed-empty" id="feedEmpty"><div class="feed-empty-icon">🛡️</div><div>Monitoring ZynChat — no threats detected</div><div class="feed-empty-sub">Attacks will appear here in real-time</div></div>';
   $('attackerList').innerHTML = '<div class="attack-empty">No attackers identified</div>';
   $('attackTypes').innerHTML  = '<div class="attack-empty">No attacks detected yet</div>';
-  allAttackers = [];
+  
+  // We don't wipe allAttackers entirely because server might have kept online ones
+  allAttackers.forEach(a => {
+    a.threatScore = 0;
+    a.attackCounts = {};
+    a.threat = null;
+  });
+
   selectedSession = null;
   $('profileEmpty').classList.remove('hidden');
   $('profileContent').classList.add('hidden');
-  ['cntTotal','cntBlocked','cntDecoys','cntAttackers','statTotal','statBlocked','statDecoys','statLogged'].forEach(id => { $(id).textContent = '0'; });
+  
+  // Reset ALL counters including Sidebar badges
+  ['cntTotal','cntBlocked','cntDecoys','cntAttackers','statTotal','statBlocked','statDecoys','statLogged','attackerCount','userCount'].forEach(id => { 
+    const el = $(id);
+    if (el) el.textContent = '0'; 
+  });
+
+  // Re-render sidebar to show preserved users correctly
+  renderLeft(allAttackers);
 });
 
 // ─── Status ───────────────────────────────────────────────────────────────────
@@ -133,15 +151,11 @@ function animateNum(id, val) {
 
 // ─── Render Left Panel ────────────────────────────────────────────────────────
 function renderLeft(attackers) {
-  // Show ALL currently online users (Normal and Flagged) in the Active list
-  // We strictly check isOnline === true to ensure real-time accuracy
-  const online   = attackers.filter(a => a.isOnline === true);
-  
-  // Show attackers with history even if they are offline (so we don't lose them)
-  const flagged  = attackers.filter(a => (a.threatScore || 0) > 0 && a.isOnline !== true);
+  const online  = attackers.filter(a => a.isOnline === true);
+  const flagged = attackers.filter(a => (a.threatScore || 0) > 0 && a.isOnline !== true);
 
   renderList('userList',     online,  'No active users');
-  renderList('attackerList', flagged, 'No offline attackers');
+  renderList('attackerList', flagged, 'No attackers identified');
   
   if ($('userCount'))     $('userCount').textContent     = online.length;
   if ($('attackerCount')) $('attackerCount').textContent = flagged.length;
@@ -151,28 +165,41 @@ function renderList(targetId, list, emptyMsg) {
   const el = $(targetId);
   if (!el) return;
 
-  if (!list.length) {
+  if (!list || !list.length) {
     el.innerHTML = `<div class="attack-empty">${emptyMsg}</div>`;
     return;
   }
 
   el.innerHTML = list.map(a => {
     const hasThreat  = (a.threatScore || 0) > 0;
+    const isSelected = (a.session === selectedSession);
     const chipClass  = hasThreat ? 'attacker-chip' : 'user-chip';
     const dotColor   = hasThreat ? (a.threat?.color || '#ef4444') : '#10b981';
-    const icon       = hasThreat ? '🎯' : '🛡️';
     
-    const displayName = a.session || 'Anonymous';
+    const displayName = (a.session || 'Anonymous').replace(/^anon@/, 'Guest ');
+
     return `
-      <div class="${chipClass} ${a.session === selectedSession ? 'selected' : ''}"
-           onclick="selectAttacker(${JSON.stringify(a).replace(/"/g,'&quot;')})">
+      <div class="${chipClass} ${isSelected ? 'selected' : ''}" 
+           style="cursor:pointer"
+           data-session="${a.session}"
+           onclick="selectAttackerBySession('${a.session}')">
         <div class="attacker-dot" style="background:${dotColor}"></div>
-        <span class="attacker-icon">${icon}</span>
+        <span class="attacker-icon">${hasThreat ? '🎯' : '👤'}</span>
         <span class="attacker-name">${displayName}</span>
         ${hasThreat ? `<span class="attacker-score">${a.threatScore}</span>` : ''}
       </div>`;
   }).join('');
 }
+
+window.selectAttackerBySession = (sessionID) => {
+  console.log("[Dashboard] Selecting session:", sessionID);
+  const attacker = allAttackers.find(x => x.session === sessionID);
+  if (attacker) {
+    selectedSession = sessionID;
+    renderProfile(attacker);
+    renderLeft(allAttackers); // Refresh highlights
+  }
+};
 
 // ─── Attack type meta (icon, display name, bar colour) ───────────────────────
 const ATTACK_META = {
@@ -266,24 +293,31 @@ function prependFeedItem(evt, animate) {
 function selectAttacker(attacker) {
   selectedSession = attacker.session;
 
-  // Update chip highlights
-  document.querySelectorAll('.attacker-chip').forEach(el => {
-    el.classList.toggle('selected', el.querySelector('.attacker-name')?.textContent === attacker.session);
+  // Update highlights (Safe match)
+  document.querySelectorAll('.user-chip, .attacker-chip').forEach(el => {
+    // We check the technical ID we stored in the onclick, not the display text
+    const isSelected = el.getAttribute('data-session') === attacker.session;
+    el.classList.toggle('selected', isSelected);
   });
 
   renderProfile(attacker);
 }
 
 function renderProfile(a) {
+  console.log("[Dashboard] Rendering profile for:", a.session);
+  
+  // 1. Reset Visibility
   $('profileEmpty').classList.add('hidden');
   $('profileContent').classList.remove('hidden');
+  
+  // 2. REFRESH Buttons for THIS specific user
   updateBlockBtn(a);
 
-  // ── Threat Score Ring ──
-  const score   = a.threatScore || 0;
-  const level   = a.threat || { label: 'LOW', color: '#10b981' };
+  // 3. Update Threat Score
+  const score = a.threatScore || 0;
+  const level = a.threat || { label: 'LOW', color: '#10b981' };
   const circumf = 264;
-  const offset  = circumf - (score / 100) * circumf;
+  const offset = circumf - (score / 100) * circumf;
 
   $('scoreValue').textContent = score;
   $('scoreLevel').textContent = level.label;
@@ -291,11 +325,12 @@ function renderProfile(a) {
   $('scoreCard').style.borderColor = level.color + '44';
 
   const ring = $('scoreRing');
-  ring.style.strokeDashoffset = offset;
-  ring.style.stroke           = level.color;
+  if (ring) {
+    ring.style.strokeDashoffset = offset;
+    ring.style.stroke = level.color;
+  }
 
-  // ── Identity ──
-  // Show clean session name — strip "anon@" prefix for display
+  // 4. Update Identity (Wipe old info first)
   const displayName = (a.session || '—').replace(/^anon@/, 'Guest ');
   $('pSession').textContent = displayName;
   $('pIP').textContent      = a.ip || '—';
@@ -336,11 +371,11 @@ function renderProfile(a) {
     }
   }
 
-  // ── Geo ──
+  // ── Geo (Smart fallback for mobile) ──
   const geo = a.geo || {};
-  $('pCountry').textContent = geo.country_name ? `${getFlagEmoji(geo.country_code)} ${geo.country_name}` : '—';
+  $('pCountry').textContent = geo.country_name ? `${getFlagEmoji(geo.country_code)} ${geo.country_name}` : '🌐 Unknown Location';
   $('pCity').textContent    = [geo.city, geo.region].filter(Boolean).join(', ') || '—';
-  $('pOrg').textContent     = geo.org      || '—';
+  $('pOrg').textContent     = geo.org || geo.asn_organization || 'Mobile/Private Network';
   $('pTZ').textContent      = geo.timezone || '—';
 
   // ── Device (UA parsed) ──
@@ -385,52 +420,105 @@ function getFlagEmoji(code) {
 }
 
 // ─── IP Blocking ──────────────────────────────────────────────────────────────
-function updateBlockBtn(a) {
-  const blockIPBtn    = $('blockIPBtn');
-  const unblockIPBtn  = $('unblockIPBtn');
-  const blockFPBtn    = $('blockFPBtn');
-  const unblockFPBtn  = $('unblockFPBtn');
-  if (!blockIPBtn) return;
-
-  const ipBlocked = blockedIPSet.has(a.ip);
-  const fpBlocked = a.fpId && blockedFPSet.has(a.fpId);
-
-  blockIPBtn.style.display   = ipBlocked ? 'none' : 'flex';
-  unblockIPBtn.style.display = ipBlocked ? 'flex'  : 'none';
-
-  if (blockFPBtn) {
-    blockFPBtn.style.display   = (!a.fpId || fpBlocked) ? 'none' : 'flex';
-    unblockFPBtn.style.display = (a.fpId && fpBlocked)   ? 'flex' : 'none';
-  }
-}
-
-async function blockCurrentIP() {
+// ─── Block Actions ───────────────────────────────────────────────────────────
+// ─── Block Actions (Hardened) ────────────────────────────────────────────────
+async function blockCurrentSession() {
   const a = allAttackers.find(x => x.session === selectedSession);
-  if (!a || !a.ip) return;
-  await fetch('api/block', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ip: a.ip }) });
-  showToast(`🚫 ${a.ip} blocked!`, 'red');
+  if (!a) return;
+  const btn = $('blockSessionBtn');
+  if (btn) btn.innerHTML = '✂️ Kicking...';
+  try {
+    const res = await fetch('/api/block-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session: a.session })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      blockedSessionSet.add(a.session);
+      updateBlockBtn(a);
+      showToast(`✂️ Session ${a.session.slice(0,8)}... kicked!`, 'orange');
+    }
+  } catch (e) { console.error(e); }
+  finally { if (btn) btn.innerHTML = '✂️ Block Session (Surgical)'; }
 }
 
-async function unblockCurrentIP() {
+async function unblockCurrentSession() {
   const a = allAttackers.find(x => x.session === selectedSession);
-  if (!a || !a.ip) return;
-  await fetch('api/unblock', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ ip: a.ip }) });
-  showToast(`✅ ${a.ip} unblocked`, 'green');
+  if (!a) return;
+  try {
+    const res = await fetch('/api/unblock-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session: a.session })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      blockedSessionSet.delete(a.session);
+      updateBlockBtn(a);
+      showToast(`✅ Session restored`, 'green');
+    }
+  } catch (e) { console.error(e); }
 }
+
+// IP Blocking logic removed to prevent network-wide collateral.
+// Using Device and Session blocking instead.
 
 async function blockCurrentFP() {
   const a = allAttackers.find(x => x.session === selectedSession);
-  if (!a || !a.fpId) return;
-  await fetch('api/block-fp', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ fpId: a.fpId }) });
-  showToast(`🔒 Device fingerprint blocked — VPN won't help!`, 'red');
+  if (!a || !a.fpId) {
+    showToast("⚠️ Device ID missing (waiting for scan)", "orange");
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/block-fp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fpId: a.fpId })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      blockedFPSet.add(a.fpId);
+      updateBlockBtn(a);
+      showToast(`🔒 Device Fingerprint blocked!`, 'red');
+    }
+  } catch (e) { console.error(e); }
 }
 
 async function unblockCurrentFP() {
   const a = allAttackers.find(x => x.session === selectedSession);
   if (!a || !a.fpId) return;
-  await fetch('api/unblock-fp', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ fpId: a.fpId }) });
-  showToast(`✅ Fingerprint unblocked`, 'green');
+
+  try {
+    const res = await fetch('/api/unblock-fp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fpId: a.fpId })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      blockedFPSet.delete(a.fpId);
+      updateBlockBtn(a);
+      showToast(`✅ Device Fingerprint unblocked`, 'green');
+    }
+  } catch (e) { console.error(e); }
 }
+
+
+function updateBlockBtn(a) {
+  const bS = $('blockSessionBtn');
+  const uS = $('unblockSessionBtn');
+  const bF = $('blockFPBtn');
+  const uF = $('unblockFPBtn');
+
+  const sB = blockedSessionSet.has(a.session);
+  const fB = a.fpId && blockedFPSet.has(a.fpId);
+
+  if (bS) { bS.style.display = sB ? 'none' : 'block'; uS.style.display = sB ? 'block' : 'none'; }
+  if (bF) { bF.style.display = fB ? 'none' : 'block'; uF.style.display = fB ? 'block' : 'none'; }
+}
+
 
 function renderBlockedList() {
   const el    = $('blockedList');
@@ -548,3 +636,20 @@ function initTimeline() {
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 initTimeline();
+
+// Final Hard-Binding for Block/Unblock buttons
+function bindButtons() {
+  const bS = $('blockSessionBtn');
+  const uS = $('unblockSessionBtn');
+  const bF = $('blockFPBtn');
+  const uF = $('unblockFPBtn');
+
+  if (bS) bS.onclick = blockCurrentSession;
+  if (uS) uS.onclick = unblockCurrentSession;
+  if (bF) bF.onclick = blockCurrentFP;
+  if (uF) uF.onclick = unblockCurrentFP;
+}
+
+// Bind now and on load
+bindButtons();
+document.addEventListener('DOMContentLoaded', bindButtons);

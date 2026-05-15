@@ -77,6 +77,7 @@ app.use(helmet({
     directives: {
       ...helmet.contentSecurityPolicy.getDefaultDirectives(),
       "script-src": ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+      "script-src-attr": ["'unsafe-inline'"], // [FIX] Allow inline onclick handlers for dashboard buttons
       "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
       "font-src": ["'self'", "fonts.gstatic.com"],
       "frame-ancestors": ["'none'"],
@@ -176,6 +177,15 @@ function requireApiToken(req, res, next) {
   res.status(401).json({ ok: false, error: 'Unauthorized: Invalid ShieldWatch Token' });
 }
 
+// 2b. Allow either API token OR Admin session (for Dashboard to read lists)
+function requireApiOrAdmin(req, res, next) {
+  const token = req.headers['x-shieldwatch-token'] || req.headers['x-sw-api-token'] || req.query.token;
+  if (token === API_TOKEN) return next();
+  if (req.session && req.session.isAdmin) return next();
+  
+  res.status(401).json({ ok: false, error: 'Unauthorized: Access Denied' });
+}
+
 // Static files (public) — login is public, rest is protected
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 // app.use(requireAdmin); // DO NOT USE GLOBAL REDIRECT HERE - MOVED DOWN
@@ -187,22 +197,25 @@ let lastEventHash = '0000000000000000'; // Telemetry Hash Chain Root
 const attackers = new Map();    // sessionKey → attacker profile
 let lastSyncTime = Date.now(); // Track last time we heard from the sensor
 const geoCache  = new Map();    // ip → geo data
-const blockedIPs          = new Set();   // manually blocked IPs
-const blockedFingerprints = new Set();   // blocked browser fingerprint hashes
-const fingerprintIndex    = new Map();   // fpId → { sessionKey, ip } (for VPN detection)
+const blockedIPs          = new Set();
+const blockedFingerprints = new Set();
+const blockedSessions     = new Set(); // [NEW] For surgical session blocking
+const fingerprintIndex    = new Map();
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
 function saveState() {
   try {
     const state = {
+      globalStats,
       events:              events.slice(0, 1000),
       lastEventHash:       lastEventHash,
       attackers:           Array.from(attackers.entries()),
       blockedIPs:          Array.from(blockedIPs),
       blockedFingerprints: Array.from(blockedFingerprints),
+      blockedSessions:     Array.from(blockedSessions),
       fingerprintIndex:    Array.from(fingerprintIndex.entries())
     };
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state));
+    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   } catch (e) {
     console.error("[State] Error saving:", e.message);
   }
@@ -212,21 +225,18 @@ function loadState() {
   if (!fs.existsSync(STATE_FILE)) return;
   try {
     const data = JSON.parse(fs.readFileSync(STATE_FILE));
+    if (data.globalStats) globalStats = data.globalStats;
     if (data.lastEventHash) lastEventHash = data.lastEventHash;
-    if (data.events) events.push(...data.events);
+    if (data.events) { events.splice(0); events.push(...data.events); }
     if (data.attackers) {
-        data.attackers.forEach(([k, v]) => {
-            v.isOnline = false; // [IMPORTANT] Reset status on startup
-            attackers.set(k, v);
-        });
+        attackers.clear();
+        data.attackers.forEach(([k, v]) => { v.isOnline = false; attackers.set(k, v); });
     }
     if (data.blockedIPs) data.blockedIPs.forEach(ip => blockedIPs.add(ip));
     if (data.blockedFingerprints) data.blockedFingerprints.forEach(fp => blockedFingerprints.add(fp));
+    if (data.blockedSessions) data.blockedSessions.forEach(s => blockedSessions.add(s));
     if (data.fingerprintIndex) data.fingerprintIndex.forEach(([k, v]) => fingerprintIndex.set(k, v));
-    console.log(`[State] Restored: ${events.length} events, ${attackers.size} attackers (All reset to offline)`);
-  } catch (e) {
-    console.error("[State] Error loading:", e.message);
-  }
+  } catch (e) {}
 }
 
 // Init state on startup
@@ -595,6 +605,8 @@ setInterval(() => {
 app.get('/api/events',   requireAdmin, (_req, res) => res.json(events.slice(0, 100)));
 app.get('/api/attackers', requireAdmin, (_req, res) => res.json(Array.from(attackers.values())));
 
+// [FIX BUG 14] These endpoints are intentionally public to allow 
+// the launch.py status monitor to work without complex auth.
 app.get('/api/live-status', (req, res) => {
   const all = Array.from(attackers.values());
   const online = all.filter(a => a.isOnline === true);
@@ -625,11 +637,12 @@ app.get('/ping', (_req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // IP BLOCKING — dashboard-controlled blocklist
 // ─────────────────────────────────────────────────────────────────────────────
-app.get('/api/blocked', (_req, res) => {
+// ─── IP BLOCKING — dashboard-controlled blocklist ─────────────────────────────
+app.get('/api/blocked', requireApiOrAdmin, (_req, res) => {
   res.json(Array.from(blockedIPs));
 });
 
-app.get('/api/blocked-fp', (_req, res) => {
+app.get('/api/blocked-fp', requireApiOrAdmin, (_req, res) => {
   res.json(Array.from(blockedFingerprints));
 });
 
@@ -651,6 +664,30 @@ app.post('/api/unblock-fp', requireAdmin, (req, res) => {
   res.json({ ok: true, unblocked: fpId });
 });
 
+app.get('/api/blocked-sessions', requireApiOrAdmin, (req, res) => {
+  res.json(Array.from(blockedSessions));
+});
+
+app.post('/api/block-session', requireAdmin, (req, res) => {
+  const { session } = req.body;
+  if (!session) return res.json({ ok: false, error: 'session required' });
+  blockedSessions.add(session);
+  console.log(`[Block] ✂️ Session surgically blocked: ${session}`);
+  io.emit('blocked_session_update', Array.from(blockedSessions));
+  saveState();
+  res.json({ ok: true, blocked: session });
+});
+
+app.post('/api/unblock-session', requireAdmin, (req, res) => {
+  const { session } = req.body;
+  if (!session) return res.json({ ok: false, error: 'session required' });
+  blockedSessions.delete(session);
+  console.log(`[Unblock] ✅ Session unblocked: ${session}`);
+  io.emit('blocked_session_update', Array.from(blockedSessions));
+  saveState();
+  res.json({ ok: true, unblocked: session });
+});
+
 app.post('/api/block', requireAdmin, (req, res) => {
   const { ip } = req.body;
   if (!ip) return res.json({ ok: false, error: 'ip required' });
@@ -658,6 +695,7 @@ app.post('/api/block', requireAdmin, (req, res) => {
   blockedIPs.add(clean);
   console.log(`[Block] 🚫 IP blocked: ${clean} | total blocked: ${blockedIPs.size}`);
   io.emit('blocked_update', Array.from(blockedIPs));
+  saveState();
   res.json({ ok: true, blocked: clean, total: blockedIPs.size });
 });
 
@@ -668,29 +706,48 @@ app.post('/api/unblock', requireAdmin, (req, res) => {
   blockedIPs.delete(clean);
   console.log(`[Unblock] ✅ IP unblocked: ${clean}`);
   io.emit('blocked_update', Array.from(blockedIPs));
+  saveState();
   res.json({ ok: true, unblocked: clean });
 });
 
-// ─── Reset (Clear Cards & Feed Only) ──────────────────────────────────────────
+// ─── Reset (Total Wipe — Preserving Online Users) ────────────────────────────
 app.post('/api/reset', requireAdmin, (req, res) => {
   events.splice(0);
-  lastEventHash = null; // Reset the chain
+  // [FIX BUG 1] Reset to valid hex string instead of null to prevent SHA-256 TypeError
+  lastEventHash = '0000000000000000';
   
-  // Reset Global Dashboard Counters
-  globalStats = {
-    total:   0,
-    blocked: 0,
-    decoys:  0,
-    logged:  0,
-    byType:  {}
-  };
-
-  // We KEEP attackers (profiles) and blockedIPs as requested.
-
-  io.emit('reset'); // Tells dashboard to clear its feed and UI counters
+  // Wipe all blocklists
+  blockedIPs.clear();
+  blockedFingerprints.clear();
+  blockedSessions.clear();
+  fingerprintIndex.clear();
   
-  console.log('[Reset] Global counters and feed cleared — Attackers/Blocklists preserved');
-  saveState();
+  // Reset Global Stats
+  globalStats = { total:0, blocked:0, decoys:0, logged:0, byType:{} };
+
+  // Reset attackers (keep only online ones)
+  const survivors = [];
+  attackers.forEach((a, id) => {
+    if (a.isOnline) {
+      a.threatScore = 0;
+      a.threat      = { label: 'LOW', color: '#10b981' };
+      a.attackCounts = {};
+      survivors.push(a);
+    }
+  });
+  attackers.clear();
+  survivors.forEach(a => attackers.set(a.session, a));
+
+  console.log('[Reset] 🧹 Global Security State Wiped — Clean Demo Start');
+  
+  // Notify everyone instantly
+  io.emit('reset');
+  io.emit('blocked_update', []);
+  io.emit('blocked_fp_update', []);
+  io.emit('blocked_session_update', []);
+  io.emit('attackers_update', Array.from(attackers.values()));
+  
+  saveState(); 
   res.json({ ok: true });
 });
 
@@ -703,6 +760,7 @@ io.on('connection', (socket) => {
     attackers:   Array.from(attackers.values()),
     blocked:     Array.from(blockedIPs),
     blockedFPs:  Array.from(blockedFingerprints),
+    blockedSessions: Array.from(blockedSessions)
   });
   socket.on('disconnect', () => console.log('[Dashboard] Client disconnected:', socket.id));
 });

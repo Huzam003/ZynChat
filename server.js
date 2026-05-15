@@ -217,18 +217,7 @@ app.post('/api/register', (req, res) => {
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 app.post('/api/logout', (req, res) => {
-  const username = req.session.username;
   req.session.destroy();
-  
-  // Immediately broadcast that this user is gone
-  if (username) {
-    console.log(`[Logout] User ${username} logged out.`);
-    // We need to wait a tiny bit for the session to clear
-    setTimeout(() => {
-        if (typeof broadcastOnlineUsers === 'function') broadcastOnlineUsers();
-    }, 500);
-  }
-  
   res.json({ ok: true });
 });
 
@@ -547,6 +536,19 @@ io.on('connection', (socket) => {
 
   // ── Chat Message ─────────────────────────────────────────────────────────────
   socket.on('chat_message', ({ roomId, text }) => {
+    // [SHIELDWATCH] Instant enforcement check
+    const mockReq = {
+      headers: socket.handshake.headers,
+      socket: socket.conn.transport.socket || { remoteAddress: socket.handshake.address },
+      session: { ...socket.request.session, username: user.username }
+    };
+    if (sw && sw.checkBlocking && sw.checkBlocking(mockReq)) {
+      console.log(`[ShieldWatch] ✂️  INSTANT KICK: ${user.username} blocked during active chat.`);
+      socket.emit('error_msg', 'Unauthorized: Session Terminated.');
+      socket.disconnect(true);
+      return;
+    }
+
     if (!text || typeof text !== 'string') return;
     const clean = text.trim().slice(0, 2000);
     if (!clean) return;
@@ -602,6 +604,42 @@ io.on('connection', (socket) => {
 
   console.log(`[+] ${user.username} connected (${socket.id})`);
 });
+
+// ─── Socket Reaper (Kicks blocked users) ─────────────────────────────
+function runReaper() {
+  const sockets = io.sockets.sockets;
+  if (!sockets || sockets.size === 0) return;
+
+  sockets.forEach(socket => {
+    // Standardize IP for socket context
+    let rawIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address || '127.0.0.1';
+    if (rawIP.includes(',')) rawIP = rawIP.split(',')[0];
+    const cleanIP = rawIP.trim().replace(/^::ffff:/, '').replace(/^::1$/, '127.0.0.1');
+
+    const mockReq = {
+      headers: socket.handshake.headers,
+      socket: { remoteAddress: cleanIP },
+      session: { ...socket.request.session }
+    };
+    // The session might not have a username if the socket is not fully identified,
+    // but the Reaper runs on all sockets. For identified users, we try to get it from our onlineUsers map.
+    const u = onlineUsers.get(socket.id);
+    if (u) mockReq.session.username = u.username;
+
+    if (sw && sw.checkBlocking && sw.checkBlocking(mockReq)) {
+      console.log(`[ShieldWatch] ✂️  HARD KICK: Disconnecting blocked socket ${socket.id} (IP: ${cleanIP})`);
+      socket.emit('error_msg', 'Your session has been blacklisted.');
+      socket.disconnect(true);
+    }
+  });
+}
+
+// Global hook for the ShieldWatch sensor to trigger an instant kick
+global.onShieldWatchBlock = runReaper;
+
+if (sw && sw.checkBlocking) {
+  setInterval(runReaper, 3000); // Background scan every 3s
+}
 
 function broadcastOnlineUsers() {
   // Get unique users (objects) for the frontend
