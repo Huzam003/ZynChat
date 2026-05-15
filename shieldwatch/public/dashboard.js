@@ -103,7 +103,6 @@ socket.on('reset', () => {
   renderBlockedList();
   renderLeft(allAttackers);
   updateCounters(null, allAttackers);
-});
   ['cntTotal','cntBlocked','cntDecoys','cntAttackers','statTotal','statBlocked','statDecoys','statLogged','attackerCount','userCount'].forEach(id => { 
     const el = $(id);
     if (el) el.textContent = '0'; 
@@ -111,6 +110,7 @@ socket.on('reset', () => {
 
   // Re-render sidebar to show preserved users correctly
   renderLeft(allAttackers);
+  updateCounters(null, allAttackers);
 });
 
 // ─── Status ───────────────────────────────────────────────────────────────────

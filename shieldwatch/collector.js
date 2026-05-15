@@ -245,251 +245,7 @@ app.post('/api/auth/login', rateLimit(10, 15 * 60 * 1000), checkDashboardBruteFo
   res.status(401).json({ ok: false, error: 'Access Denied: Invalid Security Credential' });
 });
 
-// ─── Protected Routes ────────────────────────────────────────────────────────
-app.use(requireAdmin);
-
-// Dashboard Assets
-app.get('/',           (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/dashboard.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.js')));
-app.get('/dashboard.css', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.css')));
-const events    = [];           // all threat events, newest first
-let lastEventHash = '0000000000000000'; // Telemetry Hash Chain Root
-const attackers = new Map();    // sessionKey → attacker profile
-let lastSyncTime = Date.now(); // Track last time we heard from the sensor
-const geoCache  = new Map();    // ip → geo data
-const blockedIPs          = new Set();
-const blockedFingerprints = new Set();
-const blockedSessions     = new Set(); // [NEW] For surgical session blocking
-const fingerprintIndex    = new Map();
-
-// ─── Persistence ─────────────────────────────────────────────────────────────
-function saveState() {
-  try {
-    const state = {
-      globalStats,
-      events:              events.slice(0, 1000),
-      lastEventHash:       lastEventHash,
-      attackers:           Array.from(attackers.entries()),
-      blockedIPs:          Array.from(blockedIPs),
-      blockedFingerprints: Array.from(blockedFingerprints),
-      blockedSessions:     Array.from(blockedSessions),
-      fingerprintIndex:    Array.from(fingerprintIndex.entries())
-    };
-    // Safe Save: Write to .tmp then rename to prevent corruption on crash
-    const tmpFile = STATE_FILE + '.tmp';
-    fs.writeFileSync(tmpFile, JSON.stringify(state, null, 2));
-    fs.renameSync(tmpFile, STATE_FILE);
-  } catch (e) {
-    console.error("[State] Error saving:", e.message);
-  }
-}
-
-function loadState() {
-  if (!fs.existsSync(STATE_FILE)) return;
-  try {
-    const data = JSON.parse(fs.readFileSync(STATE_FILE));
-    if (data.globalStats) globalStats = data.globalStats;
-    if (data.lastEventHash) lastEventHash = data.lastEventHash;
-    if (data.events) { events.splice(0); events.push(...data.events); }
-    if (data.attackers) {
-        attackers.clear();
-        data.attackers.forEach(([k, v]) => { v.isOnline = false; attackers.set(k, v); });
-    }
-    if (data.blockedIPs) data.blockedIPs.forEach(ip => blockedIPs.add(ip));
-    if (data.blockedFingerprints) data.blockedFingerprints.forEach(fp => blockedFingerprints.add(fp));
-    if (data.blockedSessions) data.blockedSessions.forEach(s => blockedSessions.add(s));
-    if (data.fingerprintIndex) data.fingerprintIndex.forEach(([k, v]) => fingerprintIndex.set(k, v));
-  } catch (e) {}
-}
-
-// Init state on startup
-loadState();
-
-// ─── UA Parser ────────────────────────────────────────────────────────────────
-function parseUA(ua) {
-  if (!ua) return { browser: 'Unknown', os: 'Unknown', device: 'Desktop' };
-
-  let browser = 'Unknown', os = 'Unknown', device = 'Desktop';
-
-  // Browser
-  if (/Edg\/([0-9]+)/.test(ua))                           browser = `Edge ${RegExp.$1}`;
-  else if (/OPR\/([0-9]+)/.test(ua))                      browser = `Opera ${RegExp.$1}`;
-  else if (/Chrome\/([0-9]+)/.test(ua) && !/Chromium/.test(ua)) browser = `Chrome ${RegExp.$1}`;
-  else if (/Firefox\/([0-9]+)/.test(ua))                  browser = `Firefox ${RegExp.$1}`;
-  else if (/Version\/([0-9]+).+Safari/.test(ua))          browser = `Safari ${RegExp.$1}`;
-  else if (/curl\//.test(ua))                              browser = 'curl (CLI)';
-  else if (/python-requests/.test(ua))                     browser = 'Python Requests';
-  else if (/sqlmap/.test(ua))                              browser = '⚠ sqlmap';
-
-  // OS
-  if (/Windows NT 10|Windows NT 11/.test(ua))             os = 'Windows 11/10';
-  else if (/Windows NT 6\.3/.test(ua))                    os = 'Windows 8.1';
-  else if (/Windows NT 6\.1/.test(ua))                    os = 'Windows 7';
-  else if (/Mac OS X ([0-9_]+)/.test(ua))                 os = `macOS ${RegExp.$1.replace(/_/g,'.')}`;
-  else if (/Android ([0-9.]+)/.test(ua))                  { os = `Android ${RegExp.$1}`; device = 'Mobile'; }
-  else if (/iPhone|iPad/.test(ua))                        { os = 'iOS'; device = 'Mobile'; }
-  else if (/Linux/.test(ua))                              os = 'Linux';
-
-  return { browser, os, device };
-}
-
-// ─── IP Geolocation (ipapi.co, free tier) ────────────────────────────────────
-async function getGeoInfo(ip) {
-  if (!ip) return { city: 'Unknown', country_name: 'Unknown' };
-  
-  // Clean IP (strip port / IPv6 prefix)
-  const cleanIP = ip.replace(/^::ffff:/, '').split(':')[0].trim();
-  if (geoCache.has(cleanIP)) return geoCache.get(cleanIP);
-
-  // Local / private IPs — demo mode
-  const isLocal =
-    cleanIP === '127.0.0.1' || cleanIP === '::1' ||
-    /^192\.168\./.test(cleanIP) || /^10\./.test(cleanIP) ||
-    /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(cleanIP);
-
-  if (isLocal) {
-    const geo = {
-      ip: cleanIP, city: 'Local Network', region: 'Internal',
-      country_name: 'Pakistan', country_code: 'PK',
-      org: 'NexaCorp Internal', timezone: 'Asia/Karachi',
-      latitude: 33.6844, longitude: 73.0479, is_local: true
-    };
-    geoCache.set(cleanIP, geo);
-    return geo;
-  }
-
-  // Try ipapi.co with fallback to ip-api.com
-  const providers = [
-    { url: `https://ipapi.co/${cleanIP}/json/`, timeout: 3000 },
-    { url: `http://ip-api.com/json/${cleanIP}`, timeout: 2000 }
-  ];
-
-  for (const provider of providers) {
-    try {
-      const ctrl = new AbortController();
-      const tid  = setTimeout(() => ctrl.abort(), provider.timeout);
-      const res  = await fetch(provider.url, { signal: ctrl.signal });
-      clearTimeout(tid);
-      
-      if (!res.ok) continue;
-      
-      const data = await res.json();
-      // Normalize ip-api.com format to ipapi.co format
-      if (data.status === 'success') {
-        data.country_name = data.country;
-        data.country_code = data.countryCode;
-        data.region = data.regionName;
-        data.org = data.isp;
-      }
-      
-      if (data.country_name || data.city) {
-        geoCache.set(cleanIP, data);
-        return data;
-      }
-    } catch (e) {
-      console.warn(`[GeoIP] Provider ${provider.url} failed: ${e.message}`);
-    }
-  }
-
-  const fallback = { ip: cleanIP, city: 'Offline/VPN', country_name: 'Unknown', org: 'Unknown' };
-  geoCache.set(cleanIP, fallback);
-  return fallback;
-}
-
-// ─── Threat Scoring ───────────────────────────────────────────────────────────
-function calcThreatScore(profile) {
-  const c = profile.attackCounts || {};
-  let s = 0;
-  s += (c.sqli         || 0) * 25;
-  s += (c.xss          || 0) * 20;
-  s += (c.pathTraversal|| 0) * 20;
-  s += (c.cmdInjection || 0) * 30;
-  s += (c.honeypot     || 0) * 15;
-  s += (c.ddos         || 0) *  8;
-  s += (c.csrf           || 0) * 18;
-  s += (c.bruteforce     || 0) * 10;
-  s += (c.idor           || 0) * 15;
-  s += (c.sessionFixation|| 0) * 20;
-  s += (c.bot             || 0) * 15;
-  return Math.min(100, s);
-}
-
-function threatLevel(score) {
-  if (score >= 75) return { label: 'CRITICAL', color: '#ef4444' };
-  if (score >= 50) return { label: 'HIGH',     color: '#f97316' };
-  if (score >= 25) return { label: 'MEDIUM',   color: '#f59e0b' };
-  return                  { label: 'LOW',       color: '#10b981' };
-}
-
-// ─── Upsert Attacker Profile ──────────────────────────────────────────────────
-function upsertProfile(sessionKey, ip, ua, geo, extraData = {}) {
-  if (!attackers.has(sessionKey)) {
-    attackers.set(sessionKey, {
-      session:      sessionKey,
-      ip,
-      geo,
-      ua:           parseUA(ua),
-      rawUA:        ua || '',
-      firstSeen:    new Date().toISOString(),
-      lastSeen:     new Date().toISOString(),
-      attackCounts: {},
-      recentEvents: [],
-      fingerprint:  null,
-      inHoneypot:   false,
-      threatScore:  0,
-      threat:       threatLevel(0),
-    });
-    // [FIX BUG 30] Only increment global total on NEW profile creation
-    globalStats.total++;
-  }
-
-  const p = attackers.get(sessionKey);
-  p.lastSeen = new Date().toISOString();
-  if (ip)  p.ip  = ip;
-  if (geo) p.geo = geo;
-  if (ua)  p.rawUA = ua;
-  Object.assign(p, extraData);
-
-  // Cap geoCache size
-  if (geoCache.size > 10000) {
-    geoCache.delete(geoCache.keys().next().value);
-  }
-
-  return p;
-}
-
-// ─── Authentication Endpoints ────────────────────────────────────────────────
-app.post('/api/auth/login', checkDashboardBruteForce, (req, res) => {
-  const { password } = req.body;
-  if (!password) return res.status(401).json({ ok: false });
-
-  // Simple comparison for demo reliability
-  if (password === ADMIN_PASS) {
-    req.session.isAdmin = true;
-    dashboardFailures.delete(req.ip);
-    return res.json({ ok: true });
-  }
-  
-  // Track failure
-  const fail = dashboardFailures.get(req.ip) || { count: 0, lastAt: 0 };
-  fail.count++;
-  fail.lastAt = Date.now();
-
-  // Cap failures map size
-  if (dashboardFailures.size >= 10000 && !dashboardFailures.has(req.ip)) {
-    dashboardFailures.delete(dashboardFailures.keys().next().value);
-  }
-  dashboardFailures.set(req.ip, fail);
-  
-  res.status(401).json({ ok: false, error: 'Access Denied: Invalid Security Credential' });
-});
-
-app.post('/api/auth/logout', (req, res) => {
-  req.session.destroy();
-  res.json({ ok: true });
-});
-
+// 1. Inbound API (Sensor -> Collector)
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/event  — receive threat event from NexaChat sensor
 // ─────────────────────────────────────────────────────────────────────────────
@@ -631,241 +387,303 @@ app.post('/api/fingerprint', requireApiToken, async (req, res) => {
 
   // Broadcast update to sidebar ONLY (not the feed)
   io.emit('attackers_update', Array.from(attackers.values()));
-  saveState();
-  
-  res.json({ ok: true, fpId, vpnDetected });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// POST /api/active-users — receive real-time active users list
-// ─────────────────────────────────────────────────────────────────────────────
-app.post('/api/active-users', requireApiToken, (req, res) => {
-  const { sessions } = req.body;
-  
-  console.log(`[Sync] Pulse received. Users: ${sessions ? sessions.length : 0}`);
-  
-  if (!Array.isArray(sessions)) return res.json({ ok: false });
-
-  lastSyncTime = Date.now();
-  
-  const activeSet = new Set(sessions);
-  let changed = false;
-
-  // 1. Update existing profiles
-  for (const [sid, a] of attackers) {
-    const isOnlineNow = activeSet.has(sid);
-    if (a.isOnline !== isOnlineNow) {
-      console.log(`[Sync] User ${sid} is now ${isOnlineNow ? 'ONLINE' : 'OFFLINE'}`);
-      a.isOnline = isOnlineNow;
-      changed = true;
-    }
-  }
-
-  // 2. Add new online users
-  for (const session of sessions) {
-    if (!attackers.has(session)) {
-      console.log(`[Sync] New user detected online: ${session}`);
-      upsertProfile(session, null, null, null, { isOnline: true });
-      changed = true;
-    }
-  }
-
-  if (changed) {
-    io.emit('attackers_update', Array.from(attackers.values()));
-    saveState();
-  }
-  
   res.json({ ok: true });
 });
 
-// Auto-cleanup: Removed global sync pulse reaper to favor individual heartbeat tracking.
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REST — dashboard data
-// ─────────────────────────────────────────────────────────────────────────────
-app.get('/api/events',   requireAdmin, (_req, res) => res.json(events.slice(0, 100)));
-app.get('/api/attackers', requireAdmin, (_req, res) => res.json(Array.from(attackers.values())));
-
-// [FIX BUG 14] These endpoints are intentionally public to allow 
-// the launch.py status monitor to work without complex auth.
-app.get('/api/live-status', (req, res) => {
-  const all = Array.from(attackers.values());
-  const online = all.filter(a => a.isOnline === true);
-  res.json({
-    online_count: online.length,
-    online_users: online.map(a => ({ session: a.session, threat: a.threatScore || 0 })),
-    total_events: events.length
-  });
+app.post('/api/active-users', requireApiToken, (req, res) => {
+  const { sessions } = req.body;
+  if (!sessions || !Array.isArray(sessions)) return res.json({ ok: false });
+  
+  // Mark these users as online, everyone else offline
+  const currentSet = new Set(sessions);
+  for (const [key, profile] of attackers) {
+    const wasOnline = profile.isOnline;
+    profile.isOnline = currentSet.has(key);
+    if (profile.isOnline && !wasOnline) {
+      profile.lastSeen = new Date().toISOString();
+    }
+  }
+  io.emit('attackers_update', Array.from(attackers.values()));
+  res.json({ ok: true });
 });
 
-app.get('/api/stats', (_req, res) => {
+// 2. Protected Routes (Admin Dashboard)
+app.use(requireAdmin);
+
+// Dashboard Assets
+app.get('/',           (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/dashboard.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.js')));
+app.get('/dashboard.css', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.css')));
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DATA STORE
+// ─────────────────────────────────────────────────────────────────────────────
+const events    = [];           // all threat events, newest first
+let lastEventHash = '0000000000000000'; // Telemetry Hash Chain Root
+const attackers = new Map();    // sessionKey → attacker profile
+let lastSyncTime = Date.now(); // Track last time we heard from the sensor
+const geoCache  = new Map();    // ip → geo data
+
+const blockedIPs          = new Set();
+const blockedFingerprints = new Set();
+const blockedSessions     = new Set(); // [NEW] For surgical session blocking
+const fingerprintIndex    = new Map();
+
+// ─── Persistence ─────────────────────────────────────────────────────────────
+function saveState() {
+  try {
+    const state = {
+      globalStats,
+      events:              events.slice(0, 1000),
+      lastEventHash:       lastEventHash,
+      attackers:           Array.from(attackers.entries()),
+      blockedIPs:          Array.from(blockedIPs),
+      blockedFingerprints: Array.from(blockedFingerprints),
+      blockedSessions:     Array.from(blockedSessions),
+      fingerprintIndex:    Array.from(fingerprintIndex.entries())
+    };
+    // Safe Save: Write to .tmp then rename to prevent corruption on crash
+    const tmpFile = STATE_FILE + '.tmp';
+    fs.writeFileSync(tmpFile, JSON.stringify(state, null, 2));
+    fs.renameSync(tmpFile, STATE_FILE);
+  } catch (err) {
+    console.error(`[State] ❌ Failed to save state: ${err.message}`);
+  }
+}
+
+function loadState() {
+  if (!fs.existsSync(STATE_FILE)) return;
+  try {
+    const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    if (data.globalStats) globalStats = data.globalStats;
+    if (data.lastEventHash) lastEventHash = data.lastEventHash;
+    
+    if (data.events) {
+      events.push(...data.events);
+    }
+    
+    if (data.attackers) {
+      data.attackers.forEach(([k, v]) => {
+        // Ensure some fields are reset on load
+        v.isOnline = false; 
+        attackers.set(k, v);
+      });
+    }
+
+    if (data.blockedIPs)          data.blockedIPs.forEach(ip => blockedIPs.add(ip));
+    if (data.blockedFingerprints) data.blockedFingerprints.forEach(fp => blockedFingerprints.add(fp));
+    if (data.blockedSessions)     data.blockedSessions.forEach(sid => blockedSessions.add(sid));
+    if (data.fingerprintIndex)    data.fingerprintIndex.forEach(([k, v]) => fingerprintIndex.set(k, v));
+
+    console.log(`[State] 📂 Restored ${attackers.size} profiles and ${events.length} events`);
+  } catch (err) {
+    console.warn(`[State] ⚠️ Failed to load state: ${err.message}`);
+  }
+}
+
+// Initial load
+loadState();
+
+// ─── GeoIP & UA Helpers ──────────────────────────────────────────────────────
+async function getGeoInfo(ip) {
+  if (ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.')) {
+    return { country_name: 'Local Network', country_code: 'LO', city: 'Home', org: 'Internal IP' };
+  }
+  if (geoCache.has(ip)) return geoCache.get(ip);
+
+  try {
+    // Local GeoIP Database (for air-gapped/performance)
+    const localDbPath = path.join(__dirname, 'geoip_local.json');
+    if (fs.existsSync(localDbPath)) {
+      const db = JSON.parse(fs.readFileSync(localDbPath, 'utf8'));
+      if (db[ip]) {
+        geoCache.set(ip, db[ip]);
+        return db[ip];
+      }
+    }
+
+    // Fallback to external API (ipapi.co)
+    const res = await new Promise((resolve, reject) => {
+      http.get(`http://ipapi.co/${ip}/json/`, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => resolve(JSON.parse(data)));
+      }).on('error', reject);
+    });
+
+    if (res && !res.error) {
+      geoCache.set(ip, res);
+      return res;
+    }
+  } catch {}
+
+  return { country_name: 'Unknown', city: 'Unknown', org: 'ISP' };
+}
+
+function parseUA(uaStr) {
+  if (!uaStr) return { browser: '?', os: '?' };
+  const s = uaStr.toLowerCase();
+  let b = 'Other', o = 'Other';
+
+  if (s.includes('chrome')) b = 'Chrome';
+  else if (s.includes('firefox')) b = 'Firefox';
+  else if (s.includes('safari')) b = 'Safari';
+  else if (s.includes('edge')) b = 'Edge';
+
+  if (s.includes('win')) o = 'Windows';
+  else if (s.includes('mac')) o = 'macOS';
+  else if (s.includes('linux')) o = 'Linux';
+  else if (s.includes('android')) o = 'Android';
+  else if (s.includes('iphone')) o = 'iOS';
+
+  return { browser: b, os: o };
+}
+
+// ─── Attacker Profile Logic ──────────────────────────────────────────────────
+function upsertProfile(sessionKey, ip, ua, geo, extra = {}) {
+  let p = attackers.get(sessionKey);
+  if (!p) {
+    p = {
+      session: sessionKey,
+      ip,
+      ua,
+      geo,
+      firstSeen: new Date().toISOString(),
+      lastSeen:  new Date().toISOString(),
+      isOnline:  true,
+      threatScore: 0,
+      attackCounts: {},
+      recentEvents: [],
+      vpnHistory: [],
+      vpnDetected: false,
+      fpBlocked: false,
+    };
+    attackers.set(sessionKey, p);
+  } else {
+    p.lastSeen = new Date().toISOString();
+    p.isOnline = true;
+    if (ip && p.ip !== ip) {
+      if (!p.vpnHistory.includes(p.ip)) p.vpnHistory.push(p.ip);
+      p.ip = ip;
+    }
+  }
+  Object.assign(p, extra);
+  return p;
+}
+
+function calcThreatScore(p) {
+  let score = 0;
+  for (const [type, count] of Object.entries(p.attackCounts)) {
+    const weight = { sqli: 40, xss: 30, ddos: 20, honeypot: 50, bot: 25, brute: 35 }[type] || 10;
+    score += count * weight;
+  }
+  if (p.vpnDetected) score += 20;
+  return Math.min(100, score);
+}
+
+function threatLevel(score) {
+  if (score >= 80) return { label: 'CRITICAL', color: '#ef4444' };
+  if (score >= 50) return { label: 'HIGH',     color: '#f97316' };
+  if (score >= 20) return { label: 'MEDIUM',   color: '#eab308' };
+  return { label: 'LOW', color: '#10b981' };
+}
+
+// ─── API Endpoints (Admin Protected) ──────────────────────────────────────────
+app.get('/api/stats', (req, res) => {
   res.json({
     ...globalStats,
-    attackers: Array.from(attackers.values()).filter(a => a.threatScore > 0).length
+    attackers: Array.from(attackers.values()).filter(a => a.threatScore > 0).length,
+    logged:    events.length
   });
 });
 
-// Status Check (Public)
+app.get('/api/attackers', (req, res) => res.json(Array.from(attackers.values())));
+app.get('/api/events',    (req, res) => res.json(events));
 
-app.get('/ping', (_req, res) => {
-  res.json({ status: 'online', app: 'shieldwatch-collector', events: events.length });
-});
+app.get('/api/blocked', (req, res) => res.json(Array.from(blockedIPs)));
+app.get('/api/blocked-fp', (req, res) => res.json(Array.from(blockedFingerprints)));
+app.get('/api/blocked-sessions', (req, res) => res.json(Array.from(blockedSessions)));
 
-// ─────────────────────────────────────────────────────────────────────────────
-// IP BLOCKING — dashboard-controlled blocklist
-// ─────────────────────────────────────────────────────────────────────────────
-// ─── IP BLOCKING — dashboard-controlled blocklist ─────────────────────────────
-app.get('/api/blocked', requireApiOrAdmin, (_req, res) => {
-  res.json(Array.from(blockedIPs));
-});
-
-app.get('/api/blocked-fp', requireApiOrAdmin, (_req, res) => {
-  res.json(Array.from(blockedFingerprints));
-});
-
-app.post('/api/block-fp', requireAdmin, (req, res) => {
+// ─── Block Actions (Hardened) ────────────────────────────────────────────────
+app.post('/api/block-fp', (req, res) => {
   const { fpId } = req.body;
-  if (!fpId) return res.json({ ok: false, error: 'fpId required' });
+  if (!fpId) return res.json({ ok: false });
   blockedFingerprints.add(fpId);
-  console.log(`[Block-FP] 🔒 Fingerprint blocked: ${fpId.slice(0,12)}… | total: ${blockedFingerprints.size}`);
-  io.emit('blocked_fp_update', Array.from(blockedFingerprints));
   saveState();
-  res.json({ ok: true, blocked: fpId });
+  io.emit('blocked_fp_update', Array.from(blockedFingerprints));
+  res.json({ ok: true });
 });
 
-app.post('/api/unblock-fp', requireAdmin, (req, res) => {
+app.post('/api/unblock-fp', (req, res) => {
   const { fpId } = req.body;
-  if (!fpId) return res.json({ ok: false, error: 'fpId required' });
   blockedFingerprints.delete(fpId);
-  console.log(`[Unblock-FP] ✅ Fingerprint unblocked: ${fpId.slice(0,12)}…`);
+  saveState();
   io.emit('blocked_fp_update', Array.from(blockedFingerprints));
-  saveState();
-  res.json({ ok: true, unblocked: fpId });
+  res.json({ ok: true });
 });
 
-app.get('/api/blocked-sessions', requireApiOrAdmin, (req, res) => {
-  res.json(Array.from(blockedSessions));
-});
-
-app.post('/api/block-session', requireAdmin, (req, res) => {
+app.post('/api/block-session', (req, res) => {
   const { session } = req.body;
-  if (!session) return res.json({ ok: false, error: 'session required' });
+  if (!session) return res.json({ ok: false });
   blockedSessions.add(session);
-  console.log(`[Block] ✂️ Session surgically blocked: ${session}`);
-  io.emit('blocked_session_update', Array.from(blockedSessions));
   saveState();
-  res.json({ ok: true, blocked: session });
+  io.emit('blocked_session_update', Array.from(blockedSessions));
+  res.json({ ok: true });
 });
 
-app.post('/api/unblock-session', requireAdmin, (req, res) => {
+app.post('/api/unblock-session', (req, res) => {
   const { session } = req.body;
-  if (!session) return res.json({ ok: false, error: 'session required' });
   blockedSessions.delete(session);
-  console.log(`[Unblock] ✅ Session unblocked: ${session}`);
+  saveState();
   io.emit('blocked_session_update', Array.from(blockedSessions));
-  saveState();
-  res.json({ ok: true, unblocked: session });
+  res.json({ ok: true });
 });
 
-app.post('/api/block', requireAdmin, (req, res) => {
+app.post('/api/unblock', (req, res) => {
   const { ip } = req.body;
-  if (!ip) return res.json({ ok: false, error: 'ip required' });
-  const clean = ip.replace(/^::ffff:/, '').split(':')[0].trim();
-  blockedIPs.add(clean);
-  console.log(`[Block] 🚫 IP blocked: ${clean} | total blocked: ${blockedIPs.size}`);
-  io.emit('blocked_update', Array.from(blockedIPs));
+  blockedIPs.delete(ip);
   saveState();
-  res.json({ ok: true, blocked: clean, total: blockedIPs.size });
+  io.emit('blocked_update', Array.from(blockedIPs));
+  res.json({ ok: true });
 });
 
-app.post('/api/unblock', requireAdmin, (req, res) => {
-  const { ip } = req.body;
-  if (!ip) return res.json({ ok: false, error: 'ip required' });
-  const clean = ip.replace(/^::ffff:/, '').split(':')[0].trim();
-  blockedIPs.delete(clean);
-  console.log(`[Unblock] ✅ IP unblocked: ${clean}`);
-  io.emit('blocked_update', Array.from(blockedIPs));
-  saveState();
-  res.json({ ok: true, unblocked: clean });
-});
-
-// ─── Reset (Total Wipe — Preserving Online Users) ────────────────────────────
-app.post('/api/reset', requireAdmin, (req, res) => {
-  events.splice(0);
-  // [FIX BUG 1] Reset to valid hex string instead of null to prevent SHA-256 TypeError
-  lastEventHash = '0000000000000000';
-  
-  // Wipe all blocklists
+app.post('/api/reset', (req, res) => {
+  events.length = 0;
+  attackers.clear();
   blockedIPs.clear();
   blockedFingerprints.clear();
   blockedSessions.clear();
-  fingerprintIndex.clear();
-  
-  // Reset Global Stats
   globalStats = { total:0, blocked:0, decoys:0, logged:0, byType:{} };
-
-  // Reset attackers (keep only online ones)
-  const survivors = [];
-  attackers.forEach((a, id) => {
-    if (a.isOnline) {
-      a.threatScore = 0;
-      a.threat      = { label: 'LOW', color: '#10b981' };
-      a.attackCounts = {};
-      survivors.push(a);
-    }
-  });
-  attackers.clear();
-  survivors.forEach(a => attackers.set(a.session, a));
-
-  console.log('[Reset] 🧹 Global Security State Wiped — Clean Demo Start');
-  
-  // Notify everyone instantly
+  saveState();
   io.emit('reset');
-  io.emit('blocked_update', []);
-  io.emit('blocked_fp_update', []);
-  io.emit('blocked_session_update', []);
-  io.emit('attackers_update', Array.from(attackers.values()));
-  
-  saveState(); 
   res.json({ ok: true });
 });
 
-// ─── Socket.io ────────────────────────────────────────────────────────────────
+// ─── Socket.io Logic ──────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
-  console.log('[Dashboard] Client connected:', socket.id);
-  // Send current state immediately
+  console.log(`[Socket] 🌐 Dashboard client connected: ${socket.id}`);
+  
+  // Send initial state
   socket.emit('init', {
-    events:      events.slice(0, 50),
-    attackers:   Array.from(attackers.values()),
-    blocked:     Array.from(blockedIPs),
-    blockedFPs:  Array.from(blockedFingerprints),
+    events:    events.slice(0, 50),
+    attackers: Array.from(attackers.values()),
+    blocked:   Array.from(blockedIPs),
+    blockedFPs: Array.from(blockedFingerprints),
     blockedSessions: Array.from(blockedSessions)
   });
-  socket.on('disconnect', () => console.log('[Dashboard] Client disconnected:', socket.id));
+
+  socket.on('disconnect', () => {
+    console.log(`[Socket] 🔌 Dashboard client disconnected`);
+  });
 });
 
-// ─── Heartbeat Reaper (Prune offline users every 30s) ─────────────────────────
-setInterval(() => {
-  let changed = false;
-  const now = Date.now();
-  attackers.forEach(p => {
-    if (p.isOnline) {
-      const last = new Date(p.lastSeen).getTime();
-      if (now - last > 120000) { // 2 minutes timeout
-        p.isOnline = false;
-        changed = true;
-      }
-    }
-  });
-  if (changed) {
-    io.emit('attackers_update', Array.from(attackers.values()));
-  }
-}, 30000);
-
-// ─── Start ────────────────────────────────────────────────────────────────────
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🛡️  ShieldWatch Collector  →  http://localhost:${PORT}`);
-  console.log(`    Dashboard              →  http://localhost:${PORT}/`);
-  console.log(`    Events API             →  POST http://localhost:${PORT}/api/event`);
-  console.log(`    Fingerprint API        →  POST http://localhost:${PORT}/api/fingerprint\n`);
+// ─── Server Start ─────────────────────────────────────────────────────────────
+server.listen(PORT, () => {
+  console.log(`
+🛡️  ShieldWatch Collector  →  http://localhost:${PORT}
+    Dashboard              →  http://localhost:${PORT}/
+    Events API             →  POST http://localhost:${PORT}/api/event
+    Fingerprint API        →  POST http://localhost:${PORT}/api/fingerprint
+  `);
 });
