@@ -127,7 +127,7 @@
         fp.cores      || '',
         fp.memory     || '',
         fp.screen     || '',
-        fp.pixelRatio || '',
+        // Removed pixelRatio to make ID zoom-resistant (Bug 26)
         cleanGpu      || 'generic',
         fp.audioHash  || 'stable'
       ];

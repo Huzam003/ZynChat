@@ -215,7 +215,10 @@ function saveState() {
       blockedSessions:     Array.from(blockedSessions),
       fingerprintIndex:    Array.from(fingerprintIndex.entries())
     };
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+    // Safe Save: Write to .tmp then rename to prevent corruption on crash
+    const tmpFile = STATE_FILE + '.tmp';
+    fs.writeFileSync(tmpFile, JSON.stringify(state, null, 2));
+    fs.renameSync(tmpFile, STATE_FILE);
   } catch (e) {
     console.error("[State] Error saving:", e.message);
   }
@@ -352,6 +355,8 @@ function upsertProfile(sessionKey, ip, ua, geo, extraData = {}) {
       threatScore:  0,
       threat:       threatLevel(0),
     });
+    // [FIX BUG 30] Only increment global total on NEW profile creation
+    globalStats.total++;
   }
 
   const p = attackers.get(sessionKey);
@@ -442,7 +447,6 @@ app.post('/api/event', requireApiToken, async (req, res) => {
   profile.threat      = threatLevel(profile.threatScore);
 
   // Update global stats
-  globalStats.total++;
   if (evt.verdict === 'BLOCKED') globalStats.blocked++;
   if (evt.verdict === 'DECOY')   globalStats.decoys++;
   if (evt.verdict === 'LOGGED')  globalStats.logged++;
