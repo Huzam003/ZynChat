@@ -209,7 +209,7 @@ def clear_cache_and_redeploy():
     
     try:
         response = requests.post(url, headers=headers, json=data)
-        if response.status_code in [200, 201]:
+        if response.status_code in [200, 201, 202]:
             deploy_data = response.json()
             deploy_id = deploy_data.get("id")
             print(f"{C_GRN}[+] Render Response: {response.status_code} - {response.text}{C_RST}")
