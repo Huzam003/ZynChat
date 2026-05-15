@@ -22,24 +22,49 @@ const { initDB, getDB, getPrepare, execVulnerable } = require('./database');
 const app    = express();
 const server = http.createServer(app);
 const io     = new Server(server, {
-  cors: { origin: '*', methods: ['GET', 'POST'] }
+  cors: { origin: false } // Restricted Socket.io CORS
 });
 
+const IS_PROD = process.env.NODE_ENV === 'production';
 const PORT           = process.env.PORT || 3001;
-const SESSION_SECRET = process.env.SESSION_SECRET || 'zynchat-dev-secret-2024';
+const SESSION_SECRET = process.env.SESSION_SECRET;
+
+if (!SESSION_SECRET || SESSION_SECRET === 'zynchat-dev-secret-2024') {
+  console.error('\n[FATAL] Missing or dangerous SESSION_SECRET.');
+  console.error('Please set a unique SESSION_SECRET in your .env file.\n');
+  process.exit(1);
+}
 
 // ─── Session Middleware (shared with Socket.io) ───────────────────────────────
 const sessionMiddleware = session({
+  name:              'zyn.sid',
   secret:            SESSION_SECRET,
   resave:            false,
   saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000, httpOnly: true }
+  cookie: { 
+    maxAge: 24 * 60 * 60 * 1000, 
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: IS_PROD
+  }
 });
 
-app.use(cors());
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.disable('x-powered-by');
+// app.use(cors()); // REMOVED for hardening - only use specific origins if needed
+app.use(helmet({ 
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "script-src": ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+      "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+      "font-src": ["'self'", "fonts.gstatic.com"],
+      "img-src": ["'self'", "data:", "https:"],
+      "connect-src": ["'self'", "ws:", "wss:"],
+    }
+  }
+}));
+app.use(express.json({ limit: '512kb' }));
+app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 app.use(sessionMiddleware);
 
 // ─── ShieldWatch RASP Sensor (optional) ───────────────────────────────────────
@@ -96,7 +121,7 @@ app.get('/api/security/nginx-block', (req, res) => {
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/ping', (req, res) => {
-  res.json({ status: 'online', app: 'zynchat', version: '2.0.0', shieldwatch: !!sw });
+  res.json({ status: 'online', app: 'zynchat', version: '2.2.0-hardened', shieldwatch: !!sw });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
