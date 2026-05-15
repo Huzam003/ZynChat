@@ -49,6 +49,8 @@ function parseAddr(addr) {
 }
 
 const COLLECTOR = parseAddr(RAW_ADDR);
+const COLLECTOR_URL = `${COLLECTOR.useHttps ? 'https' : 'http'}://${COLLECTOR.host}${COLLECTOR.port === 443 || COLLECTOR.port === 80 ? '' : ':' + COLLECTOR.port}`;
+console.log(`[ShieldWatch] 📡 Collector URL: ${COLLECTOR_URL}`);
 
 // ─── IP Blocklist (synced from ShieldWatch collector every 30s) ──────────────
 const blockedIPs = new Set();
@@ -111,8 +113,9 @@ function fetchFingerprintBlocklist() {
         const list = JSON.parse(data);
         blockedFingerprints.clear();
         list.forEach(fp => blockedFingerprints.add(fp));
-        if (list.length > 0) console.log(`[ShieldWatch] 🔒 Fingerprint blocklist synced: ${list.length} hashes`);
-      } catch {}
+      } catch (e) {
+        console.error(`[ShieldWatch] ❌ Failed to parse fingerprint blocklist: ${e.message}`);
+      }
     });
   });
   req.on('error',   () => {});

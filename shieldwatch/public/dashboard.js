@@ -155,7 +155,7 @@ function renderList(targetId, list, emptyMsg) {
   el.innerHTML = list.map(a => {
     if (!a || !a.session) return ''; // Skip corrupted entries
     const hasThreat  = (a.threatScore || 0) > 0;
-    const isSelected = (a.session === selectedSession);
+    const isSelected = (a.session && selectedSession && a.session.trim() === selectedSession.trim());
     const chipClass  = hasThreat ? 'attacker-chip' : 'user-chip';
     const dotColor   = hasThreat ? (a.threat?.color || '#ef4444') : '#10b981';
     
@@ -175,8 +175,14 @@ function renderList(targetId, list, emptyMsg) {
 }
 
 window.selectAttackerBySession = (sessionID) => {
-  const attacker = allAttackers.find(x => x.session === sessionID);
+  if (!sessionID) return;
+  const s = sessionID.trim();
+  const attacker = allAttackers.find(x => x.session === s);
   if (attacker) selectAttacker(attacker);
+  else {
+    // Fallback: create a temporary profile for untracked sessions
+    selectAttacker({ session: s, isOnline: true });
+  }
 };
 
 // ─── Attack type meta (icon, display name, bar colour) ───────────────────────
