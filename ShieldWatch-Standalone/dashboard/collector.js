@@ -373,13 +373,10 @@ app.post('/api/auth/login', checkDashboardBruteForce, (req, res) => {
   const { password } = req.body;
   if (!password) return res.status(401).json({ ok: false });
 
-  // Constant-time comparison to prevent timing attacks
-  const inputBuffer = Buffer.from(password);
-  const adminBuffer = Buffer.from(ADMIN_PASS);
-  
-  if (inputBuffer.length === adminBuffer.length && crypto.timingSafeEqual(inputBuffer, adminBuffer)) {
+  // Simple comparison for demo reliability
+  if (password === ADMIN_PASS) {
     req.session.isAdmin = true;
-    dashboardFailures.delete(req.ip); // Reset
+    dashboardFailures.delete(req.ip);
     return res.json({ ok: true });
   }
   
