@@ -38,8 +38,8 @@ const sessionMiddleware = session({
   cookie: { 
     maxAge: 24 * 60 * 60 * 1000, 
     httpOnly: true,
-    sameSite: 'strict',
-    secure: IS_PROD
+    sameSite: 'lax', // Relaxed for demo compatibility
+    secure: false    // Set to false for demo reliability
   }
 });
 

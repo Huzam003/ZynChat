@@ -284,67 +284,16 @@ document.getElementById('loginUsername').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') document.getElementById('loginPassword').focus();
 });
 
-// ─── ShieldWatch Fingerprint Gate ─────────────────────────────────────────────
-// Keeps the Sign In button disabled until sw-beacon.js has sent the browser
-// fingerprint to the sensor. This prevents bots/scripts that skip JS from
-// ever reaching the login endpoint without a fingerprint on the session.
+// ─── ShieldWatch Sync (Optional) ─────────────────────────────────────────────
 (function () {
-  const loginBtn  = document.getElementById('loginBtn');
-  const scanBar   = document.getElementById('swScanBar');
-  const scanText  = document.getElementById('swScanText');
-
-  // Expose ready flag so the submit handler can guard Enter-key submits too
-  window._swFpReady = false;
-
-  function unlock() {
-    if (window._swFpReady) return; // already unlocked
-    window._swFpReady = true;
-
-    loginBtn.disabled = false;
-    loginBtn.classList.remove('sw-locked');
-
-    if (scanBar) {
-      scanBar.classList.add('sw-scan-done');
-      if (scanText) scanText.textContent = '✓ Verified — you may sign in';
-      // Fade out the bar instantly for demo speed
-      setTimeout(() => { scanBar.style.opacity = '0'; }, 200);
-      setTimeout(() => { scanBar.style.display  = 'none'; }, 400);
+  window._swFpReady = true;
+  fetch('/ping').then(res => res.json()).then(data => {
+    if (!data.shieldwatch) {
+      document.querySelectorAll('.badge-shield').forEach(b => {
+        b.textContent = 'Shield Offline';
+        b.style.color = 'rgba(255,255,255,0.3)';
+        b.style.border = '1px solid rgba(255,255,255,0.1)';
+      });
     }
-  }
-
-  // Primary trigger: beacon fires this when fingerprint POST succeeds
-  window.addEventListener('swFingerprintReady', unlock);
-
-  // Safety fallback: if the beacon never fires (e.g. network blocked),
-  // unlock after 5 s so legitimate users aren't permanently locked out
-  setTimeout(unlock, 5000);
+  }).catch(() => {});
 })();
-
-// Guard login submit against Enter-key bypass before fingerprint is ready
-document.getElementById('loginForm').addEventListener('submit', function (e) {
-  if (!window._swFpReady) {
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    showError('loginError', 'Security scan still in progress — please wait a moment.');
-  }
-}, true); // capture phase — runs before the regular submit listener
-
-// ─── Sync UI with Backend ShieldWatch Status ─────────────────────────────────
-fetch('/ping').then(res => res.json()).then(data => {
-  if (!data.shieldwatch) {
-    window._swFpReady = true;
-    const btn = document.getElementById('loginBtn');
-    if (btn) {
-      btn.disabled = false;
-      btn.classList.remove('sw-locked');
-    }
-    const scanBar = document.getElementById('swScanBar');
-    if (scanBar) scanBar.style.display = 'none';
-
-    document.querySelectorAll('.badge-shield').forEach(b => {
-      b.textContent = 'Shield Offline';
-      b.style.color = 'rgba(255,255,255,0.3)';
-      b.style.border = '1px solid rgba(255,255,255,0.1)';
-    });
-  }
-}).catch(() => {});
