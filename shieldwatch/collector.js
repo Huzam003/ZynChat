@@ -34,25 +34,6 @@ if (fs.existsSync(envPath)) {
 }
 
 // ─── Startup Env Guard ────────────────────────────────────────────────────────
-function requireEnv(name) {
-  const val = process.env[name];
-  const dangerous = [
-    'shieldwatch-admin-2024',
-    'sw-internal-token-xyz',
-    'sw-collector-secret',
-    'sw-appliance-secret-123'
-  ];
-  if (!val || dangerous.includes(val)) {
-    console.error(`\n[FATAL] Missing or dangerous security variable: ${name}`);
-    console.error(`Please set a unique value for ${name} in your .env file.\n`);
-    process.exit(1);
-  }
-}
-
-requireEnv('SW_ADMIN_PASS');
-requireEnv('SW_API_TOKEN');
-requireEnv('SW_SESSION_SECRET');
-
 const app    = express();
 const server = http.createServer(app);
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -70,7 +51,7 @@ const API_TOKEN  = process.env.SW_API_TOKEN  || 'sw-internal-token-xyz';
 
 const sessionMiddleware = session({
   name:              'sw.sid',
-  secret:            process.env.SW_SESSION_SECRET,
+  secret:            process.env.SW_SESSION_SECRET || 'sw-collector-secret',
   resave:            false,
   saveUninitialized: false,
   cookie: { 

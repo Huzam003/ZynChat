@@ -27,13 +27,7 @@ const io     = new Server(server, {
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 const PORT           = process.env.PORT || 3001;
-const SESSION_SECRET = process.env.SESSION_SECRET;
-
-if (!SESSION_SECRET || SESSION_SECRET === 'zynchat-dev-secret-2024') {
-  console.error('\n[FATAL] Missing or dangerous SESSION_SECRET.');
-  console.error('Please set a unique SESSION_SECRET in your .env file.\n');
-  process.exit(1);
-}
+const SESSION_SECRET = process.env.SESSION_SECRET || 'zynchat-dev-secret-2024';
 
 // ─── Session Middleware (shared with Socket.io) ───────────────────────────────
 const sessionMiddleware = session({

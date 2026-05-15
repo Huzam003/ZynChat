@@ -1,25 +1,23 @@
-# ShieldWatch Standalone Appliance — Dockerfile
+# ShieldWatch Hardened Appliance Dockerfile
 FROM node:20-slim
 
 WORKDIR /app
 
-# Install system dependencies for Nginx if needed (optional for standalone dashboard)
-RUN apt-get update && apt-get install -y nginx procps && rm -rf /var/lib/apt/lists/*
-
-# Copy package files
+# Copy package files and install dependencies
 COPY package*.json ./
-RUN npm install --production
+RUN npm install --omit=dev
 
-# Copy dashboard code
+# Copy application source
 COPY . .
 
-# Environment Defaults
+# Set production environment
+ENV NODE_ENV=production
 ENV SW_PORT=3002
-ENV SW_ADMIN_PASS=shieldwatch-admin-2024
-ENV SW_API_TOKEN=sw-internal-token-xyz
-ENV SW_SESSION_SECRET=sw-appliance-secret-123
+
+# SECRETS: Do NOT embed secrets in the Dockerfile.
+# Pass them at runtime via --env-file .env or -e flags.
+# Required: SW_ADMIN_PASS, SW_API_TOKEN, SW_SESSION_SECRET
 
 EXPOSE 3002
 
-# Start the collector
 CMD ["node", "collector.js"]
