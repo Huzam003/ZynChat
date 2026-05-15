@@ -67,7 +67,7 @@ const sessionMiddleware = session({
     maxAge: 8 * 60 * 60 * 1000, 
     httpOnly: true, 
     sameSite: 'strict',
-    secure: IS_PROD 
+    secure: (IS_PROD && !process.env.SW_LOCAL_DEV) 
   }
 });
 
@@ -91,18 +91,17 @@ app.use(express.json({ limit: '512kb' }));
 app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 app.use(sessionMiddleware);
 
-// ─── Socket.io Auth ───────────────────────────────────────────────────────────
 io.use((socket, next) => {
-  sessionMiddleware(socket.request, {}, next);
-});
-
-io.use((socket, next) => {
-  if (socket.request.session && socket.request.session.isAdmin) {
-    next();
-  } else {
-    console.error(`[Socket] 🔒 Unauthorized connection attempt from ${socket.handshake.address}`);
-    next(new Error('Unauthorized'));
-  }
+  sessionMiddleware(socket.request, {}, () => {
+    const session = socket.request.session;
+    if (session && session.isAdmin) {
+      console.log(`[Socket] ✅ Admin session verified for ${session.adminUser}`);
+      next();
+    } else {
+      console.error(`[Socket] 🔒 Unauthorized: Session exists=${!!session}, isAdmin=${session?.isAdmin}`);
+      next(new Error('Unauthorized'));
+    }
+  });
 });
 
 // ─── Brute Force Protection (Dashboard) ──────────────────────────────────────
