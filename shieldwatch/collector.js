@@ -532,6 +532,10 @@ app.post('/api/fingerprint', requireApiToken, async (req, res) => {
 
   console.log(`[Fingerprint] session:${sessionKey} | ${fingerprint.os || '?'} | ${fingerprint.screen || '?'}${vpnDetected ? ' | ⚠️ VPN ROTATION' : ''}`);
 
+  // [FIX] Mark as online
+  profile.isOnline = true;
+  profile.lastSeen = new Date().toISOString();
+
   // Broadcast update to sidebar ONLY (not the feed)
   io.emit('attackers_update', Array.from(attackers.values()));
   saveState();
@@ -766,6 +770,24 @@ io.on('connection', (socket) => {
   });
   socket.on('disconnect', () => console.log('[Dashboard] Client disconnected:', socket.id));
 });
+
+// ─── Heartbeat Reaper (Prune offline users every 30s) ─────────────────────────
+setInterval(() => {
+  let changed = false;
+  const now = Date.now();
+  attackers.forEach(p => {
+    if (p.isOnline) {
+      const last = new Date(p.lastSeen).getTime();
+      if (now - last > 120000) { // 2 minutes timeout
+        p.isOnline = false;
+        changed = true;
+      }
+    }
+  });
+  if (changed) {
+    io.emit('attackers_update', Array.from(attackers.values()));
+  }
+}, 30000);
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 server.listen(PORT, '0.0.0.0', () => {

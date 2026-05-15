@@ -15,10 +15,9 @@
         "session": "anon@59.103.198.130",
         "ip": "59.103.198.130",
         "geo": {
+          "error": true,
           "reason": "RateLimited",
-          "message": "Please sign up for a paid plan at https://ipapi.co/pricing or contact us for a trial account",
-          "wait": 1,
-          "error": true
+          "message": "Visit https://ipapi.co/ratelimited/ for details"
         },
         "ua": {
           "browser": "Chrome 148",
@@ -27,7 +26,7 @@
         },
         "rawUA": "Mozilla/5.0 (Linux; Android 16; 2404ARN45A Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/148.0.7778.120 Mobile Safari/537.36",
         "firstSeen": "2026-05-15T17:05:25.250Z",
-        "lastSeen": "2026-05-15T17:21:15.045Z",
+        "lastSeen": "2026-05-15T17:27:30.415Z",
         "attackCounts": {},
         "recentEvents": [],
         "fingerprint": {
@@ -73,26 +72,25 @@
         "session": "admin",
         "ip": "59.103.198.130",
         "geo": {
+          "error": true,
           "reason": "RateLimited",
-          "message": "Please sign up for a paid plan at https://ipapi.co/pricing or contact us for a trial account",
-          "wait": 1,
-          "error": true
+          "message": "Visit https://ipapi.co/ratelimited/ for details"
         },
         "ua": {
           "browser": "Chrome 148",
           "os": "Android 16",
           "device": "Mobile"
         },
-        "rawUA": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36",
+        "rawUA": "Mozilla/5.0 (Linux; Android 16; 2404ARN45A Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/148.0.7778.120 Mobile Safari/537.36",
         "firstSeen": "2026-05-15T17:05:32.580Z",
-        "lastSeen": "2026-05-15T17:19:49.420Z",
+        "lastSeen": "2026-05-15T17:27:35.846Z",
         "attackCounts": {},
         "recentEvents": [],
         "fingerprint": {
-          "ua": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36",
-          "platform": "Linux armv81",
+          "ua": "Mozilla/5.0 (Linux; Android 16; 2404ARN45A Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/148.0.7778.120 Mobile Safari/537.36",
+          "platform": "Linux aarch64",
           "language": "en-US",
-          "languages": "en-US,en",
+          "languages": "en-US",
           "cores": 8,
           "memory": 8,
           "touch": true,
@@ -103,13 +101,13 @@
           "pixelRatio": 2.200000047683716,
           "timezone": "Asia/Karachi",
           "tzOffset": -300,
-          "os": "Android 10",
+          "os": "Android 16",
           "browser": "Chrome 148",
           "gpu": "ANGLE (ARM, Mali-G52 MC2, OpenGL ES 3.2)",
           "gpuVendor": "Google Inc. (ARM)",
-          "canvasHash": "VAMAXMQajYI74K4AAAAASUVORK5CYII=",
-          "deviceId": "5e729ef4",
-          "deviceRaw": "Linux armv81|8|8|491x1119|2.200000047683716|ANGLE|stable",
+          "canvasHash": "VAMA6F4gjcUG2jwAAAAASUVORK5CYII=",
+          "deviceId": "fad1d5aa",
+          "deviceRaw": "Linux aarch64|8|8|491x1119|2.200000047683716|generic|stable",
           "page": "/chat"
         },
         "inHoneypot": false,
@@ -118,9 +116,9 @@
           "label": "LOW",
           "color": "#10b981"
         },
-        "fpId": "5e729ef4",
+        "fpId": "fad1d5aa",
         "vpnDetected": false,
-        "isOnline": false
+        "isOnline": true
       }
     ],
     [
@@ -334,6 +332,13 @@
       "50dfbb74",
       {
         "sessionKey": "anon@59.103.198.130",
+        "ip": "59.103.198.130"
+      }
+    ],
+    [
+      "fad1d5aa",
+      {
+        "sessionKey": "admin",
         "ip": "59.103.198.130"
       }
     ]
