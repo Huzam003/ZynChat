@@ -19,7 +19,22 @@ const crypto = require('crypto');
 const RAW_ADDR  = process.env.SW_CEREBRO_ADDR || 'localhost:3002';
 const APP_ID    = process.env.SW_APP_ID       || 'zynchat';
 const LOG_ONLY  = process.env.SW_LOG_ONLY === 'true';
-const API_TOKEN = process.env.SW_API_TOKEN    || 'sw-internal-token-xyz';
+const API_TOKEN = process.env.SW_API_TOKEN;
+
+if (!API_TOKEN) {
+  console.error('\n[ShieldWatch] [FATAL] SW_API_TOKEN is not set.');
+  console.error('The sensor requires a security token to communicate with the collector.\n');
+  process.exit(1);
+}
+
+// ─── Shared Helpers ──────────────────────────────────────────────────────────
+function extractIP(req) {
+  const raw = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1')
+              .split(',')[0].trim();
+  return raw.replace(/^::ffff:/, '');
+}
+
+const MAX_TRACKER_SIZE = 10_000;
 
 // ─── Parse the collector address ──────────────────────────────────────────────
 // Supports:
@@ -53,7 +68,7 @@ function fetchBlocklist() {
     method:   'GET',
     headers:  { 
       'ngrok-skip-browser-warning': 'true',
-      'x-sw-api-token': API_TOKEN
+      'x-shieldwatch-token': API_TOKEN
     },
     timeout:  4000,
   };
@@ -90,7 +105,7 @@ function fetchFingerprintBlocklist() {
     method:   'GET',
     headers:  { 
       'ngrok-skip-browser-warning': 'true',
-      'x-sw-api-token': API_TOKEN
+      'x-shieldwatch-token': API_TOKEN
     },
     timeout:  4000,
   };
@@ -180,11 +195,14 @@ const BF_WINDOW_MS = 60_000;        // 60-second window
 const BF_THRESHOLD = 5;             // ≥ 5 failures in 60s = brute force
 
 function trackLoginFailure(req) {
-  const ip  = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1')
-              .split(',')[0].trim();
+  const ip  = extractIP(req);
   const now = Date.now();
   const prev = (loginFailTracker.get(ip) || []).filter(t => now - t < BF_WINDOW_MS);
   prev.push(now);
+
+  if (loginFailTracker.size >= MAX_TRACKER_SIZE && !loginFailTracker.has(ip)) {
+    loginFailTracker.delete(loginFailTracker.keys().next().value);
+  }
   loginFailTracker.set(ip, prev);
 
   if (prev.length >= BF_THRESHOLD) {
@@ -211,6 +229,10 @@ function checkDDoS(ip) {
   const now  = Date.now();
   const prev = (requestTracker.get(ip) || []).filter(t => now - t < DDOS_WINDOW_MS);
   prev.push(now);
+
+  if (requestTracker.size >= MAX_TRACKER_SIZE && !requestTracker.has(ip)) {
+    requestTracker.delete(requestTracker.keys().next().value);
+  }
   requestTracker.set(ip, prev);
   if (prev.length > DDOS_THRESHOLD) {
     return {
@@ -264,6 +286,12 @@ const PATTERNS = {
     /document\.cookie/i,
     /eval\s*\(/i,
     /<svg[^>]+on\w+/i,
+    /srcdoc\s*=/i,
+    /data\s*:\s*text\/html/i,
+    /expression\s*\(/i,
+    /vbscript\s*:/i,
+    /<base[^>]+href/i,
+    /&#x?[0-9a-f]+;/i,
   ],
   pathTraversal: [
     /\.\.\//,
@@ -351,12 +379,12 @@ function report(endpoint, payload) {
       'Content-Type':   'application/json',
       'Content-Length': Buffer.byteLength(body),
       'ngrok-skip-browser-warning': 'true',
-      'x-sw-api-token': API_TOKEN
+      'x-shieldwatch-token': API_TOKEN
     },
     timeout: 4000,
   };
 
-  console.log(`[ShieldWatch] 📡 Reporting to ${options.hostname}:${options.port}${options.path} with token: ${API_TOKEN.slice(0,4)}...`);
+  console.log(`[ShieldWatch] 📡 Reporting to ${options.hostname}:${options.port}${options.path}`);
 
   const req = module_.request(options, res => { 
     if (res.statusCode !== 200) {
@@ -378,8 +406,7 @@ function buildEvent(req, threat, verdict) {
     id:        crypto.randomUUID(),
     app:       APP_ID,
     timestamp: new Date().toISOString(),
-    ip:        (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1')
-               .split(',')[0].trim(),
+    ip:        extractIP(req),
     method:    req.method,
     path:      req.path || req.url || '/',
     ua:        req.headers['user-agent'] || '',
@@ -394,8 +421,7 @@ function httpMiddleware(req, res, next) {
   const rawPath = (req.path || req.url || '/').split('?')[0];
 
   // ── IP Blocklist check (highest priority) ────────────────────────────────────
-  const reqIP = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1')
-                .split(',')[0].trim().replace(/^::ffff:/, '');
+  const reqIP = extractIP(req);
   if (blockedIPs.has(reqIP)) {
     console.log(`[ShieldWatch] 🚫 BLOCKED IP: ${reqIP} tried ${rawPath}`);
     return res.status(403).json({
@@ -469,8 +495,7 @@ function httpMiddleware(req, res, next) {
 
   // DDoS rate-limit check (API endpoints only — skip static files)
   if (rawPath.startsWith('/api/') || rawPath.startsWith('/socket')) {
-    const ip    = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1')
-                  .split(',')[0].trim();
+    const ip    = extractIP(req);
     const flood = checkDDoS(ip);
     if (flood) {
       const verdict = LOG_ONLY ? 'LOGGED' : 'BLOCKED';
@@ -554,8 +579,7 @@ function maskPayload(body) {
 
 // ─── Fingerprint Forwarding ───────────────────────────────────────────────────
 function submitFingerprint(fingerprintData, req) {
-  const ip      = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1')
-                  .split(',')[0].trim();
+  const ip      = extractIP(req);
   const session = req.session?.username || 'anonymous';
   report('/api/fingerprint', { session, ip, fingerprint: fingerprintData });
 }
@@ -589,4 +613,14 @@ function reportNginxEvent(req, reason) {
   report('/api/event', event);
 }
 
-module.exports = { httpMiddleware, inspectMessage, detectThreats, submitFingerprint, honeypotHit, trackLoginFailure, reportNginxEvent, syncActiveUsers };
+module.exports = { 
+  httpMiddleware, 
+  middleware: httpMiddleware, 
+  inspectMessage, 
+  detectThreats, 
+  submitFingerprint, 
+  honeypotHit, 
+  trackLoginFailure, 
+  reportNginxEvent, 
+  syncActiveUsers 
+};

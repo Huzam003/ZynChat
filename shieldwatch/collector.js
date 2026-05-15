@@ -20,10 +20,45 @@ const helmet     = require('helmet');
 const fs         = require('fs');
 const crypto     = require('crypto');
 
+// ─── Manual .env Loader ──────────────────────────────────────────────────────
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+  const lines = fs.readFileSync(envPath, 'utf8').split('\n');
+  lines.forEach(line => {
+    const [key, ...vals] = line.split('=');
+    if (key && vals.length > 0) {
+      const val = vals.join('=').trim().replace(/^["']|["']$/g, '');
+      if (!process.env[key.trim()]) process.env[key.trim()] = val;
+    }
+  });
+}
+
+// ─── Startup Env Guard ────────────────────────────────────────────────────────
+function requireEnv(name) {
+  const val = process.env[name];
+  const dangerous = [
+    'shieldwatch-admin-2024',
+    'sw-internal-token-xyz',
+    'sw-collector-secret',
+    'sw-appliance-secret-123'
+  ];
+  if (!val || dangerous.includes(val)) {
+    console.error(`\n[FATAL] Missing or dangerous security variable: ${name}`);
+    console.error(`Please set a unique value for ${name} in your .env file.\n`);
+    process.exit(1);
+  }
+}
+
+requireEnv('SW_ADMIN_PASS');
+requireEnv('SW_API_TOKEN');
+requireEnv('SW_SESSION_SECRET');
+
 const app    = express();
 const server = http.createServer(app);
+const IS_PROD = process.env.NODE_ENV === 'production';
+
 const io     = new Server(server, { 
-  cors: { origin: '*' },
+  cors: { origin: false }, // Restricted CORS for Socket.io
   path: '/sw.io/'
 });
 
@@ -34,19 +69,33 @@ const ADMIN_PASS = process.env.SW_ADMIN_PASS || 'shieldwatch-admin-2024';
 const API_TOKEN  = process.env.SW_API_TOKEN  || 'sw-internal-token-xyz';
 
 const sessionMiddleware = session({
-  secret:            process.env.SW_SESSION_SECRET || 'sw-collector-secret',
+  name:              'sw.sid',
+  secret:            process.env.SW_SESSION_SECRET,
   resave:            false,
   saveUninitialized: false,
-  cookie: { maxAge: 8 * 60 * 60 * 1000, httpOnly: true }
+  cookie: { 
+    maxAge: 8 * 60 * 60 * 1000, 
+    httpOnly: true, 
+    sameSite: 'strict',
+    secure: IS_PROD 
+  }
 });
 
-app.use(cors());
-app.use(helmet({ 
-  contentSecurityPolicy: false, // Allow Chart.js and CDNs for now
-  frameguard: { action: 'deny' } 
+app.disable('x-powered-by');
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "script-src": ["'self'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+      "style-src": ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+      "frame-ancestors": ["'none'"],
+    }
+  }
 }));
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true }));
+
+// app.use(cors()); // REMOVED per hardening requirements
+app.use(express.json({ limit: '512kb' }));
+app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 app.use(sessionMiddleware);
 
 // ─── Socket.io Auth ───────────────────────────────────────────────────────────
@@ -129,11 +178,11 @@ function requireAdmin(req, res, next) {
 
 // 2. Protect Inbound API (Sensor -> Collector)
 function requireApiToken(req, res, next) {
-  const token = req.headers['x-sw-api-token'] || req.headers['x-shieldwatch-token'] || req.query.token;
+  const token = req.headers['x-shieldwatch-token'] || req.headers['x-sw-api-token'] || req.query.token;
+  // Never log the API token - log presence only
   if (token === API_TOKEN) return next();
-  
-  console.warn(`[Auth] ❌ Invalid token for ${req.path} from ${req.ip}`);
-  res.status(401).json({ ok: false, error: 'Unauthorized — invalid API token' });
+  console.warn(`[Auth] ❌ REJECTED: Invalid token from ${req.ip}`);
+  res.status(401).json({ ok: false, error: 'Unauthorized: Invalid ShieldWatch Token' });
 }
 
 // Static files (public) — login is public, rest is protected
@@ -311,13 +360,24 @@ function upsertProfile(sessionKey, ip, ua, geo, extraData = {}) {
   if (ua)  p.rawUA = ua;
   Object.assign(p, extraData);
 
+  // Cap geoCache size
+  if (geoCache.size > 10000) {
+    geoCache.delete(geoCache.keys().next().value);
+  }
+
   return p;
 }
 
 // ─── Authentication Endpoints ────────────────────────────────────────────────
 app.post('/api/auth/login', checkDashboardBruteForce, (req, res) => {
   const { password } = req.body;
-  if (password === ADMIN_PASS) {
+  if (!password) return res.status(401).json({ ok: false });
+
+  // Constant-time comparison to prevent timing attacks
+  const inputBuffer = Buffer.from(password);
+  const adminBuffer = Buffer.from(ADMIN_PASS);
+  
+  if (inputBuffer.length === adminBuffer.length && crypto.timingSafeEqual(inputBuffer, adminBuffer)) {
     req.session.isAdmin = true;
     dashboardFailures.delete(req.ip); // Reset
     return res.json({ ok: true });
@@ -327,6 +387,11 @@ app.post('/api/auth/login', checkDashboardBruteForce, (req, res) => {
   const fail = dashboardFailures.get(req.ip) || { count: 0, lastAt: 0 };
   fail.count++;
   fail.lastAt = Date.now();
+
+  // Cap failures map size
+  if (dashboardFailures.size >= 10000 && !dashboardFailures.has(req.ip)) {
+    dashboardFailures.delete(dashboardFailures.keys().next().value);
+  }
   dashboardFailures.set(req.ip, fail);
   
   res.status(401).json({ ok: false, error: 'Access Denied: Invalid Security Credential' });
@@ -420,7 +485,7 @@ app.post('/api/fingerprint', requireApiToken, async (req, res) => {
     if (prev && prev.ip && prev.ip !== ip) {
       // Same physical device, genuinely different IP → VPN rotation
       vpnDetected = true;
-      console.log(`[VPN] 🔄 Device ${fpId.slice(0,8)}… IP changed ${prev.ip} → ${ip} (session: "${prev.sessionKey}" → "${sessionKey}")`);
+      console.log(`[VPN] 🔄 Device ${fpId.slice(0,8)}… IP changed`);
 
       // Merge attack history from old profile into new profile
       const oldProfile = attackers.get(prev.sessionKey);
@@ -442,6 +507,11 @@ app.post('/api/fingerprint', requireApiToken, async (req, res) => {
 
     // Always update index with current session + IP so next check is accurate
     fingerprintIndex.set(fpId, { sessionKey, ip });
+
+    // Cap fingerprintIndex size
+    if (fingerprintIndex.size > 10000) {
+      fingerprintIndex.delete(fingerprintIndex.keys().next().value);
+    }
   }
 
   const profile = upsertProfile(sessionKey, ip, fingerprint.ua, geo, {
@@ -467,11 +537,10 @@ app.post('/api/fingerprint', requireApiToken, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/active-users — receive real-time active users list
 // ─────────────────────────────────────────────────────────────────────────────
-app.post('/api/active-users', (req, res) => {
+app.post('/api/active-users', requireApiToken, (req, res) => {
   const { sessions } = req.body;
-  const token = req.headers['x-sw-api-token'] || req.headers['x-shieldwatch-token'];
   
-  console.log(`[Sync] Pulse received. Users: ${sessions ? sessions.length : 0}. Token status: ${token ? 'OK' : 'MISSING'}`);
+  console.log(`[Sync] Pulse received. Users: ${sessions ? sessions.length : 0}`);
   
   if (!Array.isArray(sessions)) return res.json({ ok: false });
 
@@ -528,8 +597,8 @@ setInterval(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 // REST — dashboard data
 // ─────────────────────────────────────────────────────────────────────────────
-app.get('/api/events',   (_req, res) => res.json(events.slice(0, 100)));
-app.get('/api/attackers',(_req, res) => res.json(Array.from(attackers.values())));
+app.get('/api/events',   requireAdmin, (_req, res) => res.json(events.slice(0, 100)));
+app.get('/api/attackers', requireAdmin, (_req, res) => res.json(Array.from(attackers.values())));
 
 app.get('/api/live-status', (req, res) => {
   const all = Array.from(attackers.values());
@@ -617,7 +686,10 @@ app.post('/api/unblock', requireAdmin, (req, res) => {
 });
 
 // ─── Reset (demo convenience) ─────────────────────────────────────────────────
-app.post('/api/reset', requireAdmin, (_req, res) => {
+app.post('/api/reset', requireAdmin, (req, res) => {
+  if (req.body.confirmToken !== 'CONFIRM_RESET') {
+    return res.status(400).json({ ok: false, error: 'Reset confirmation token required' });
+  }
   events.splice(0);
   attackers.clear();
   geoCache.clear();
