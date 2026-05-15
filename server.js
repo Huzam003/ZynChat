@@ -561,8 +561,8 @@ io.on('connection', (socket) => {
       created_at:   new Date().toISOString()
     };
 
-    // ShieldWatch Socket.io hook
-    if (sw && sw.inspectMessage) sw.inspectMessage(msg, socket);
+    // ShieldWatch Socket.io hook (Returns true if blocked)
+    if (sw && sw.inspectMessage && sw.inspectMessage(msg, socket)) return;
 
     io.to(`room:${rid}`).emit('chat_message', msg);
   });

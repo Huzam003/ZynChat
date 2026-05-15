@@ -123,6 +123,42 @@ function fetchFingerprintBlocklist() {
 fetchFingerprintBlocklist();
 setInterval(fetchFingerprintBlocklist, 30_000);
 
+// ─── Session Blocklist (synced from collector every 30s) ──────────────────────
+const blockedSessions = new Set();
+
+function fetchSessionBlocklist() {
+  const module_ = COLLECTOR.useHttps ? https : http;
+  const options  = {
+    hostname: COLLECTOR.host,
+    port:     COLLECTOR.port,
+    path:     '/api/blocked-sessions',
+    method:   'GET',
+    headers:  { 
+      'ngrok-skip-browser-warning': 'true',
+      'x-shieldwatch-token': API_TOKEN
+    },
+    timeout:  4000,
+  };
+  const req = module_.request(options, res => {
+    let data = '';
+    res.on('data', c => data += c);
+    res.on('end', () => {
+      try {
+        const list = JSON.parse(data);
+        blockedSessions.clear();
+        list.forEach(s => blockedSessions.add(s));
+        if (list.length > 0) console.log(`[ShieldWatch] ⛔ Session blocklist synced: ${list.length} sessions`);
+      } catch {}
+    });
+  });
+  req.on('error',   () => {});
+  req.on('timeout', () => req.destroy());
+  req.end();
+}
+
+fetchSessionBlocklist();
+setInterval(fetchSessionBlocklist, 30_000);
+
 // ─── IDOR Detection ──────────────────────────────────────────────────────────
 function checkIDOR(req) {
   const rawPath = (req.path || req.url || '/').split('?')[0];
@@ -445,6 +481,17 @@ function httpMiddleware(req, res, next) {
     });
   }
 
+  // ── Session block (immediate termination) ──────────────────────────────────
+  const sessID = req.sessionID;
+  if (sessID && blockedSessions.has(sessID)) {
+    console.log(`[ShieldWatch] ⛔ BLOCKED SESSION: ${sessID} | IP: ${reqIP} | path: ${rawPath}`);
+    return res.status(403).json({
+      ok: false, blocked: true,
+      error:  'Your current session has been terminated by an administrator.',
+      threat: 'blocked_session',
+    });
+  }
+
   // IDOR check
   const idorThreat = checkIDOR(req);
   if (idorThreat) {
@@ -546,17 +593,29 @@ function httpMiddleware(req, res, next) {
 
 // ─── Socket.io Message Hook ───────────────────────────────────────────────────
 function inspectMessage(msg, socket) {
+  // 1. Enforcement Check: Is this sender blocked?
+  const req   = socket.request;
+  const ip    = extractIP(req);
+  const fpId  = req.session?.fpId;
+  const sid   = req.sessionID;
+
+  if (blockedIPs.has(ip) || (fpId && blockedFingerprints.has(fpId)) || (sid && blockedSessions.has(sid))) {
+    console.warn(`[ShieldWatch] 🛡️ Socket message dropped from BLOCKED user: ${msg.username || 'unknown'}`);
+    return true; // Return true to indicate it was blocked
+  }
+
+  // 2. Content Inspection: Detect threats in the message text
   const threat = detectThreats(msg.text);
-  if (!threat) return;
+  if (!threat) return false;
 
   const event = {
     id:        crypto.randomUUID(),
     app:       APP_ID,
     timestamp: new Date().toISOString(),
-    ip:        socket.handshake?.address || '127.0.0.1',
+    ip:        ip,
     method:    'WS',
     path:      '/socket/chat_message',
-    ua:        socket.handshake?.headers?.['user-agent'] || '',
+    ua:        req.headers['user-agent'] || '',
     threat,
     verdict:   LOG_ONLY ? 'LOGGED' : 'BLOCKED',
     session:   msg.username || 'unknown',
@@ -564,6 +623,7 @@ function inspectMessage(msg, socket) {
 
   console.log(`[ShieldWatch] 🚨 WS ${threat.type.toUpperCase()} from ${msg.username}`);
   report('/api/event', event);
+  return !LOG_ONLY; // Return true if blocked
 }
 
 function maskPayload(body) {
