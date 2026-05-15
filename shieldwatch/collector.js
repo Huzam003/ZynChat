@@ -337,9 +337,10 @@ function parseUA(ua) {
 
 // ─── IP Geolocation (ipapi.co, free tier) ────────────────────────────────────
 async function getGeoInfo(ip) {
+  if (!ip) return { city: 'Unknown', country_name: 'Unknown' };
+  
   // Clean IP (strip port / IPv6 prefix)
-  const cleanIP = ip.replace(/^::ffff:/, '').split(':')[0];
-
+  const cleanIP = ip.replace(/^::ffff:/, '').split(':')[0].trim();
   if (geoCache.has(cleanIP)) return geoCache.get(cleanIP);
 
   // Local / private IPs — demo mode
@@ -350,7 +351,7 @@ async function getGeoInfo(ip) {
 
   if (isLocal) {
     const geo = {
-      ip: cleanIP, city: 'Local Network', region: 'Demo Mode',
+      ip: cleanIP, city: 'Local Network', region: 'Internal',
       country_name: 'Pakistan', country_code: 'PK',
       org: 'NexaCorp Internal', timezone: 'Asia/Karachi',
       latitude: 33.6844, longitude: 73.0479, is_local: true
@@ -359,19 +360,42 @@ async function getGeoInfo(ip) {
     return geo;
   }
 
-  try {
-    const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(), 3000);
-    const res  = await fetch(`https://ipapi.co/${cleanIP}/json/`, { signal: ctrl.signal });
-    clearTimeout(tid);
-    const data = await res.json();
-    geoCache.set(cleanIP, data);
-    return data;
-  } catch {
-    const fallback = { ip: cleanIP, city: 'Unknown', country_name: 'Unknown', org: 'Unknown' };
-    geoCache.set(cleanIP, fallback);
-    return fallback;
+  // Try ipapi.co with fallback to ip-api.com
+  const providers = [
+    { url: `https://ipapi.co/${cleanIP}/json/`, timeout: 3000 },
+    { url: `http://ip-api.com/json/${cleanIP}`, timeout: 2000 }
+  ];
+
+  for (const provider of providers) {
+    try {
+      const ctrl = new AbortController();
+      const tid  = setTimeout(() => ctrl.abort(), provider.timeout);
+      const res  = await fetch(provider.url, { signal: ctrl.signal });
+      clearTimeout(tid);
+      
+      if (!res.ok) continue;
+      
+      const data = await res.json();
+      // Normalize ip-api.com format to ipapi.co format
+      if (data.status === 'success') {
+        data.country_name = data.country;
+        data.country_code = data.countryCode;
+        data.region = data.regionName;
+        data.org = data.isp;
+      }
+      
+      if (data.country_name || data.city) {
+        geoCache.set(cleanIP, data);
+        return data;
+      }
+    } catch (e) {
+      console.warn(`[GeoIP] Provider ${provider.url} failed: ${e.message}`);
+    }
   }
+
+  const fallback = { ip: cleanIP, city: 'Offline/VPN', country_name: 'Unknown', org: 'Unknown' };
+  geoCache.set(cleanIP, fallback);
+  return fallback;
 }
 
 // ─── Threat Scoring ───────────────────────────────────────────────────────────
