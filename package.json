@@ -1,6 +1,6 @@
 {
   "name": "zynchat",
-  "version": "2.0.0",
+  "version": "2.2.0-hardened",
   "description": "ZynChat — Enterprise Messaging Platform",
   "main": "main.js",
   "scripts": {
