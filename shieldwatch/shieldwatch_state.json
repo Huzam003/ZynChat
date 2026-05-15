@@ -15,9 +15,10 @@
         "session": "anon@59.103.198.130",
         "ip": "59.103.198.130",
         "geo": {
-          "error": true,
           "reason": "RateLimited",
-          "message": "Visit https://ipapi.co/ratelimited/ for details"
+          "message": "Please sign up for a paid plan at https://ipapi.co/pricing or contact us for a trial account",
+          "wait": 1,
+          "error": true
         },
         "ua": {
           "browser": "Chrome 148",
@@ -26,7 +27,7 @@
         },
         "rawUA": "Mozilla/5.0 (Linux; Android 16; 2404ARN45A Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/148.0.7778.120 Mobile Safari/537.36",
         "firstSeen": "2026-05-15T17:05:25.250Z",
-        "lastSeen": "2026-05-15T17:27:30.415Z",
+        "lastSeen": "2026-05-15T17:38:21.914Z",
         "attackCounts": {},
         "recentEvents": [],
         "fingerprint": {
@@ -49,10 +50,9 @@
           "gpu": "ANGLE (ARM, Mali-G52 MC2, OpenGL ES 3.2)",
           "gpuVendor": "Google Inc. (ARM)",
           "canvasHash": "VAMA6F4gjcUG2jwAAAAASUVORK5CYII=",
-          "deviceId": "50dfbb74",
-          "deviceRaw": "Linux aarch64|8|8|491x1119|2.200000047683716|ANGLE|stable",
-          "page": "/",
-          "audioHash": "124.080756434836"
+          "deviceId": "fad1d5aa",
+          "deviceRaw": "Linux aarch64|8|8|491x1119|2.200000047683716|generic|stable",
+          "page": "/"
         },
         "inHoneypot": false,
         "threatScore": 0,
@@ -60,7 +60,7 @@
           "label": "LOW",
           "color": "#10b981"
         },
-        "fpId": "50dfbb74",
+        "fpId": "fad1d5aa",
         "vpnDetected": false,
         "isOnline": false,
         "fpBlocked": true
@@ -72,9 +72,10 @@
         "session": "admin",
         "ip": "59.103.198.130",
         "geo": {
-          "error": true,
           "reason": "RateLimited",
-          "message": "Visit https://ipapi.co/ratelimited/ for details"
+          "message": "Please sign up for a paid plan at https://ipapi.co/pricing or contact us for a trial account",
+          "wait": 1,
+          "error": true
         },
         "ua": {
           "browser": "Chrome 148",
@@ -83,7 +84,7 @@
         },
         "rawUA": "Mozilla/5.0 (Linux; Android 16; 2404ARN45A Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/148.0.7778.120 Mobile Safari/537.36",
         "firstSeen": "2026-05-15T17:05:32.580Z",
-        "lastSeen": "2026-05-15T17:27:35.846Z",
+        "lastSeen": "2026-05-15T17:38:31.142Z",
         "attackCounts": {},
         "recentEvents": [],
         "fingerprint": {
@@ -118,7 +119,7 @@
         },
         "fpId": "fad1d5aa",
         "vpnDetected": false,
-        "isOnline": true
+        "isOnline": false
       }
     ],
     [
@@ -285,6 +286,53 @@
         "vpnDetected": false,
         "isOnline": false
       }
+    ],
+    [
+      "test-user-123",
+      {
+        "session": "test-user-123",
+        "ip": "127.0.0.1",
+        "geo": {
+          "ip": "127.0.0.1",
+          "city": "Local Network",
+          "region": "Demo Mode",
+          "country_name": "Pakistan",
+          "country_code": "PK",
+          "org": "NexaCorp Internal",
+          "timezone": "Asia/Karachi",
+          "latitude": 33.6844,
+          "longitude": 73.0479,
+          "is_local": true
+        },
+        "ua": {
+          "browser": "Unknown",
+          "os": "Linux",
+          "device": "Desktop"
+        },
+        "rawUA": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        "firstSeen": "2026-05-15T17:39:39.432Z",
+        "lastSeen": "2026-05-15T17:39:39.433Z",
+        "attackCounts": {},
+        "recentEvents": [],
+        "fingerprint": {
+          "deviceId": "test-hw-id-001",
+          "platform": "Linux",
+          "cores": 8,
+          "memory": 16,
+          "screen": "1920x1080",
+          "gpu": "NVIDIA RTX 3080",
+          "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+        },
+        "inHoneypot": false,
+        "threatScore": 0,
+        "threat": {
+          "label": "LOW",
+          "color": "#10b981"
+        },
+        "fpId": "test-hw-id-001",
+        "vpnDetected": false,
+        "isOnline": false
+      }
     ]
   ],
   "blockedIPs": [],
@@ -340,6 +388,13 @@
       {
         "sessionKey": "admin",
         "ip": "59.103.198.130"
+      }
+    ],
+    [
+      "test-hw-id-001",
+      {
+        "sessionKey": "test-user-123",
+        "ip": "127.0.0.1"
       }
     ]
   ]

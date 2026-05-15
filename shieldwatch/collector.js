@@ -528,6 +528,10 @@ app.post('/api/fingerprint', requireApiToken, async (req, res) => {
   // Flag if fingerprint is in blocklist
   if (fpId && blockedFingerprints.has(fpId)) {
     profile.fpBlocked = true;
+    // [FIX BUG 18] Immediately block this session too so RASP kills it
+    blockedSessions.add(sessionKey);
+    console.log(`[Block-Sync] ⛔ Session ${sessionKey} auto-blocked due to banned DeviceID: ${fpId.slice(0,12)}`);
+    io.emit('blocked_session_update', Array.from(blockedSessions));
   }
 
   console.log(`[Fingerprint] session:${sessionKey} | ${fingerprint.os || '?'} | ${fingerprint.screen || '?'}${vpnDetected ? ' | ⚠️ VPN ROTATION' : ''}`);
@@ -585,23 +589,7 @@ app.post('/api/active-users', requireApiToken, (req, res) => {
   res.json({ ok: true });
 });
 
-// Auto-cleanup: If no sync pulse for 65s, mark everyone offline
-setInterval(() => {
-    if (Date.now() - lastSyncTime > 65000) {
-        let changed = false;
-        for (const a of attackers.values()) {
-            if (a.isOnline) {
-                console.log(`[Cleanup] No pulse for 60s. Marking ${a.session} offline.`);
-                a.isOnline = false;
-                changed = true;
-            }
-        }
-        if (changed) {
-            io.emit('attackers_update', Array.from(attackers.values()));
-            saveState();
-        }
-    }
-}, 30000);
+// Auto-cleanup: Removed global sync pulse reaper to favor individual heartbeat tracking.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REST — dashboard data

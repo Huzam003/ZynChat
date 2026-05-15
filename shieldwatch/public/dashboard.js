@@ -341,16 +341,18 @@ function renderProfile(a) {
   $('pSession').textContent = displayName;
   $('pIP').textContent      = a.ip || '—';
 
-  // Status — VPN, Honeypot, or Active
+  // Status — Device Ban, VPN, Honeypot, or Active
   const statusEl = $('pHoneypot');
-  if (a.vpnDetected) {
+  if (a.fpBlocked) {
+    statusEl.innerHTML = `<span class="block-badge" style="background:#ef4444;color:#fff;padding:4px 10px;border-radius:10px;font-size:11px;font-weight:bold;letter-spacing:1px;">🚫 DEVICE PERMANENTLY BANNED</span>`;
+  } else if (a.vpnDetected) {
     statusEl.innerHTML = `<span class="vpn-badge">🔄 VPN ROTATION DETECTED</span>`;
   } else if (a.inHoneypot) {
     statusEl.innerHTML = `<span class="hp-badge">🍯 IN HONEYPOT</span>`;
   } else {
-    statusEl.innerHTML = a.isOnline === false 
-      ? `<span style="color:var(--text-muted)">Offline</span>` 
-      : 'Active';
+    statusEl.innerHTML = a.isOnline 
+      ? `<span class="active-badge" style="color:#10b981;font-weight:bold;">🟢 ONLINE / ACTIVE</span>` 
+      : `<span style="color:var(--text-muted)">⚪ OFFLINE</span>`;
   }
 
   // VPN history

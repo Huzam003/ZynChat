@@ -178,6 +178,9 @@ setInterval(fetchFingerprintBlocklist, 3000);
 // ─── Session Blocklist (synced from collector every 3s) ──────────────────────
 const blockedSessions = new Set();
 
+const blockedSessions     = new Set();
+const blockedFingerprints = new Set();
+
 function fetchSessionBlocklist() {
   const module_ = COLLECTOR.useHttps ? https : http;
   const options  = {
@@ -199,10 +202,6 @@ function fetchSessionBlocklist() {
         const list = JSON.parse(data);
         blockedSessions.clear();
         list.forEach(s => blockedSessions.add(s));
-        if (list.length > 0) {
-          console.log(`[ShieldWatch] ✂️ Session blocklist synced: ${list.length} IDs`);
-          if (global.onShieldWatchBlock) global.onShieldWatchBlock();
-        }
       } catch {}
     });
   });
@@ -211,8 +210,42 @@ function fetchSessionBlocklist() {
   req.end();
 }
 
+function fetchFingerprintBlocklist() {
+  const module_ = COLLECTOR.useHttps ? https : http;
+  const options  = {
+    hostname: COLLECTOR.host,
+    port:     COLLECTOR.port,
+    path:     '/api/blocked-fp',
+    method:   'GET',
+    headers:  { 
+      'ngrok-skip-browser-warning': 'true',
+      'x-shieldwatch-token': API_TOKEN
+    },
+    timeout:  4000,
+  };
+  const req = module_.request(options, res => {
+    let data = '';
+    res.on('data', c => data += c);
+    res.on('end', () => {
+      try {
+        const list = JSON.parse(data);
+        blockedFingerprints.clear();
+        list.forEach(fp => blockedFingerprints.add(fp));
+      } catch {}
+    });
+  });
+  req.on('error', () => {});
+  req.on('timeout', () => req.destroy());
+  req.end();
+}
+
+// Initial Sync
 fetchSessionBlocklist();
+fetchFingerprintBlocklist();
+
+// Background Sync
 setInterval(fetchSessionBlocklist, 3000);
+setInterval(fetchFingerprintBlocklist, 3000);
 
 // ─── IDOR Detection ──────────────────────────────────────────────────────────
 function checkIDOR(req) {
