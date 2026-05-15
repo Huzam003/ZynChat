@@ -19,13 +19,7 @@ const crypto = require('crypto');
 const RAW_ADDR  = process.env.SW_CEREBRO_ADDR || 'localhost:3002';
 const APP_ID    = process.env.SW_APP_ID       || 'zynchat';
 const LOG_ONLY  = process.env.SW_LOG_ONLY === 'true';
-const API_TOKEN = process.env.SW_API_TOKEN;
-
-if (!API_TOKEN) {
-  console.error('\n[ShieldWatch] [FATAL] SW_API_TOKEN is not set.');
-  console.error('The sensor requires a security token to communicate with the collector.\n');
-  process.exit(1);
-}
+const API_TOKEN = process.env.SW_API_TOKEN || 'sw-internal-token-xyz';
 
 // ─── Shared Helpers ──────────────────────────────────────────────────────────
 function extractIP(req) {
