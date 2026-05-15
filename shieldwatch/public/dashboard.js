@@ -86,7 +86,10 @@ socket.on('reset', () => {
   $('attackerList').innerHTML = '<div class="attack-empty">No attackers identified</div>';
   $('attackTypes').innerHTML  = '<div class="attack-empty">No attacks detected yet</div>';
   
-  // We don't wipe allAttackers entirely because server might have kept online ones
+  blockedIPSet.clear();
+  blockedFPSet.clear();
+  blockedSessionSet.clear();
+
   allAttackers.forEach(a => {
     a.threatScore = 0;
     a.attackCounts = {};
@@ -97,7 +100,10 @@ socket.on('reset', () => {
   $('profileEmpty').classList.remove('hidden');
   $('profileContent').classList.add('hidden');
   
-  // Reset ALL counters including Sidebar badges
+  renderBlockedList();
+  renderLeft(allAttackers);
+  updateCounters(null, allAttackers);
+});
   ['cntTotal','cntBlocked','cntDecoys','cntAttackers','statTotal','statBlocked','statDecoys','statLogged','attackerCount','userCount'].forEach(id => { 
     const el = $(id);
     if (el) el.textContent = '0'; 

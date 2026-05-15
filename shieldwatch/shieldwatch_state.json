@@ -15,9 +15,68 @@
         "session": "anon@59.103.198.130",
         "ip": "59.103.198.130",
         "geo": {
-          "error": true,
           "reason": "RateLimited",
-          "message": "Visit https://ipapi.co/ratelimited/ for details"
+          "message": "Please sign up for a paid plan at https://ipapi.co/pricing or contact us for a trial account",
+          "wait": 1,
+          "error": true
+        },
+        "ua": {
+          "browser": "Chrome 148",
+          "os": "Android 16",
+          "device": "Mobile"
+        },
+        "rawUA": "Mozilla/5.0 (Linux; Android 16; 2404ARN45A Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/148.0.7778.120 Mobile Safari/537.36",
+        "firstSeen": "2026-05-15T17:05:25.250Z",
+        "lastSeen": "2026-05-15T17:21:15.045Z",
+        "attackCounts": {},
+        "recentEvents": [],
+        "fingerprint": {
+          "ua": "Mozilla/5.0 (Linux; Android 16; 2404ARN45A Build/BP2A.250605.031.A3; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/148.0.7778.120 Mobile Safari/537.36",
+          "platform": "Linux aarch64",
+          "language": "en-US",
+          "languages": "en-US",
+          "cores": 8,
+          "memory": 8,
+          "touch": true,
+          "cookie": true,
+          "dnt": null,
+          "screen": "491x1119",
+          "colorDepth": 24,
+          "pixelRatio": 2.200000047683716,
+          "timezone": "Asia/Karachi",
+          "tzOffset": -300,
+          "os": "Android 16",
+          "browser": "Chrome 148",
+          "gpu": "ANGLE (ARM, Mali-G52 MC2, OpenGL ES 3.2)",
+          "gpuVendor": "Google Inc. (ARM)",
+          "canvasHash": "VAMA6F4gjcUG2jwAAAAASUVORK5CYII=",
+          "deviceId": "50dfbb74",
+          "deviceRaw": "Linux aarch64|8|8|491x1119|2.200000047683716|ANGLE|stable",
+          "page": "/",
+          "audioHash": "124.080756434836"
+        },
+        "inHoneypot": false,
+        "threatScore": 0,
+        "threat": {
+          "label": "LOW",
+          "color": "#10b981"
+        },
+        "fpId": "50dfbb74",
+        "vpnDetected": false,
+        "isOnline": false,
+        "fpBlocked": true
+      }
+    ],
+    [
+      "admin",
+      {
+        "session": "admin",
+        "ip": "59.103.198.130",
+        "geo": {
+          "reason": "RateLimited",
+          "message": "Please sign up for a paid plan at https://ipapi.co/pricing or contact us for a trial account",
+          "wait": 1,
+          "error": true
         },
         "ua": {
           "browser": "Chrome 148",
@@ -25,8 +84,8 @@
           "device": "Mobile"
         },
         "rawUA": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Mobile Safari/537.36",
-        "firstSeen": "2026-05-15T17:05:25.250Z",
-        "lastSeen": "2026-05-15T17:08:55.871Z",
+        "firstSeen": "2026-05-15T17:05:32.580Z",
+        "lastSeen": "2026-05-15T17:19:49.420Z",
         "attackCounts": {},
         "recentEvents": [],
         "fingerprint": {
@@ -49,63 +108,8 @@
           "gpu": "ANGLE (ARM, Mali-G52 MC2, OpenGL ES 3.2)",
           "gpuVendor": "Google Inc. (ARM)",
           "canvasHash": "VAMAXMQajYI74K4AAAAASUVORK5CYII=",
-          "deviceId": "b317987a",
-          "deviceRaw": "Linux armv81|8|8|491x1119|2.200000047683716|24|ANGLE (ARM, Mali-G52 MC2, OpenGL ES 3.2)|Google Inc. (ARM)",
-          "page": "/"
-        },
-        "inHoneypot": false,
-        "threatScore": 0,
-        "threat": {
-          "label": "LOW",
-          "color": "#10b981"
-        },
-        "fpId": "b317987a",
-        "vpnDetected": false,
-        "isOnline": false
-      }
-    ],
-    [
-      "admin",
-      {
-        "session": "admin",
-        "ip": "59.103.198.130",
-        "geo": {
-          "error": true,
-          "reason": "RateLimited",
-          "message": "Visit https://ipapi.co/ratelimited/ for details"
-        },
-        "ua": {
-          "browser": "Chrome 148",
-          "os": "Android 16",
-          "device": "Mobile"
-        },
-        "rawUA": "Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firefox/150.0",
-        "firstSeen": "2026-05-15T17:05:32.580Z",
-        "lastSeen": "2026-05-15T17:11:33.280Z",
-        "attackCounts": {},
-        "recentEvents": [],
-        "fingerprint": {
-          "ua": "Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firefox/150.0",
-          "platform": "Linux x86_64",
-          "language": "en-US",
-          "languages": "en-US,en",
-          "cores": 12,
-          "memory": null,
-          "touch": false,
-          "cookie": true,
-          "dnt": "unspecified",
-          "screen": "1920x1080",
-          "colorDepth": 24,
-          "pixelRatio": 1,
-          "timezone": "Asia/Karachi",
-          "tzOffset": -300,
-          "os": "Linux",
-          "browser": "Firefox 150",
-          "gpu": "Intel(R) HD Graphics, or similar",
-          "gpuVendor": "Intel",
-          "canvasHash": "Av8D2qVYkrCempAAAAAASUVORK5CYII=",
-          "deviceId": "a4fcbabb",
-          "deviceRaw": "Linux x86_64|12||1920x1080|1|24|Intel(R) HD Graphics, or similar|Intel",
+          "deviceId": "5e729ef4",
+          "deviceRaw": "Linux armv81|8|8|491x1119|2.200000047683716|ANGLE|stable",
           "page": "/chat"
         },
         "inHoneypot": false,
@@ -114,9 +118,9 @@
           "label": "LOW",
           "color": "#10b981"
         },
-        "fpId": "a4fcbabb",
+        "fpId": "5e729ef4",
         "vpnDetected": false,
-        "isOnline": true
+        "isOnline": false
       }
     ],
     [
@@ -287,14 +291,14 @@
   ],
   "blockedIPs": [],
   "blockedFingerprints": [
-    "5aba95fa"
+    "5e729ef4"
   ],
   "blockedSessions": [],
   "fingerprintIndex": [
     [
       "5aba95fa",
       {
-        "sessionKey": "attacker",
+        "sessionKey": "anon@59.103.198.130",
         "ip": "59.103.198.130"
       }
     ],
@@ -317,6 +321,20 @@
       {
         "sessionKey": "anon@66.249.93.97",
         "ip": "66.249.93.97"
+      }
+    ],
+    [
+      "5e729ef4",
+      {
+        "sessionKey": "admin",
+        "ip": "59.103.198.130"
+      }
+    ],
+    [
+      "50dfbb74",
+      {
+        "sessionKey": "anon@59.103.198.130",
+        "ip": "59.103.198.130"
       }
     ]
   ]

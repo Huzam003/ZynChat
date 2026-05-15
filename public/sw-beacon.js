@@ -111,8 +111,16 @@
 
     // ── Stable device ID — hardware signals, not rendering ───────────────────
     (function buildDeviceId() {
-      // Normalize GPU (Remove "ANGLE", "Direct3D", driver versions etc)
-      var cleanGpu = (fp.gpu || '').split(' (')[0].split(' vs_')[0].replace(/ANGLE |Direct3D11 |OpenGL /g, '').trim();
+      // Normalize GPU aggressively
+      // Strip everything except core model name
+      var rawGpu = (fp.gpu || '');
+      var cleanGpu = rawGpu
+        .replace(/ANGLE |Direct3D11 |OpenGL |OpenGLES |Metal |Direct3D9 |Direct3D12 /g, '')
+        .replace(/\(.*\)/g, '') // Remove parentheses (e.g. driver details)
+        .replace(/ vs_.*$/g, '')
+        .replace(/ ps_.*$/g, '')
+        .split(',')[0]
+        .trim();
 
       var hwParts = [
         fp.platform   || '',
@@ -120,7 +128,7 @@
         fp.memory     || '',
         fp.screen     || '',
         fp.pixelRatio || '',
-        cleanGpu      || '',
+        cleanGpu      || 'generic',
         fp.audioHash  || 'stable'
       ];
       var raw = hwParts.join('|');
