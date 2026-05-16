@@ -59,7 +59,97 @@ console.log(`[ShieldWatch] 📡 Collector URL: ${COLLECTOR_URL}`);
 // ─── IP Blocklist (synced from ShieldWatch collector every 30s) ──────────────
 const blockedIPs = new Set();
 
+let isInitialized = false;
+
+async function fetchWithRetry(fn, label, retries = 3, delay = 2000) {
+  for (let i = 1; i <= retries; i++) {
+    try {
+      await fn();
+      return true;
+    } catch (e) {
+      console.warn(`[ShieldWatch] ⚠️ ${label} attempt ${i} failed: ${e.message}`);
+      if (i < retries) await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  return false;
+}
+
+async function init() {
+  console.log(`[ShieldWatch] 🛡️ Initializing RASP Sensor (Collector: ${COLLECTOR_URL})...`);
+  
+  const success = await fetchWithRetry(async () => {
+    await Promise.all([
+      new Promise((resolve, reject) => {
+        const module_ = COLLECTOR.useHttps ? https : http;
+        const options = {
+          hostname: COLLECTOR.host,
+          port: COLLECTOR.port,
+          path: '/api/blocked',
+          method: 'GET',
+          headers: { 'x-shieldwatch-token': API_TOKEN },
+          timeout: 4000,
+        };
+        const req = module_.request(options, res => {
+          let data = '';
+          res.on('data', c => data += c);
+          res.on('end', () => {
+            try {
+              const list = JSON.parse(data);
+              blockedIPs.clear();
+              list.forEach(ip => blockedIPs.add(ip));
+              resolve();
+            } catch (e) { reject(e); }
+          });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+        req.end();
+      }),
+      new Promise((resolve, reject) => {
+        const module_ = COLLECTOR.useHttps ? https : http;
+        const options = {
+          hostname: COLLECTOR.host,
+          port: COLLECTOR.port,
+          path: '/api/blocked-fp',
+          method: 'GET',
+          headers: { 'x-shieldwatch-token': API_TOKEN },
+          timeout: 4000,
+        };
+        const req = module_.request(options, res => {
+          let data = '';
+          res.on('data', c => data += c);
+          res.on('end', () => {
+            try {
+              const list = JSON.parse(data);
+              blockedFingerprints.clear();
+              list.forEach(fp => blockedFingerprints.add(fp));
+              resolve();
+            } catch (e) { reject(e); }
+          });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+        req.end();
+      })
+    ]);
+  }, 'Initial sync');
+
+  if (success) {
+    console.log('[ShieldWatch] ✅ RASP sensor initialized successfully.');
+    isInitialized = true;
+    // Start background sync
+    setInterval(fetchBlocklist, 30_000);
+    setInterval(fetchFingerprintBlocklist, 30_000);
+    setInterval(fetchSessionBlocklist, 30_000);
+    return true;
+  } else {
+    console.error('[ShieldWatch] ❌ Critical: Could not connect to collector. Running in PASSIVE mode.');
+    return false;
+  }
+}
+
 function fetchBlocklist() {
+  if (!isInitialized && process.env.NODE_ENV === 'production') return;
   const module_ = COLLECTOR.useHttps ? https : http;
   const options  = {
     hostname: COLLECTOR.host,
@@ -89,14 +179,9 @@ function fetchBlocklist() {
   req.end();
 }
 
-// Sync IP blocklist immediately + every 30 seconds
-fetchBlocklist();
-setInterval(fetchBlocklist, 30_000);
-
-// ─── Fingerprint Blocklist (synced from collector every 30s) ─────────────────
 const blockedFingerprints = new Set();
-
 function fetchFingerprintBlocklist() {
+  if (!isInitialized && process.env.NODE_ENV === 'production') return;
   const module_ = COLLECTOR.useHttps ? https : http;
   const options  = {
     hostname: COLLECTOR.host,
@@ -117,9 +202,7 @@ function fetchFingerprintBlocklist() {
         const list = JSON.parse(data);
         blockedFingerprints.clear();
         list.forEach(fp => blockedFingerprints.add(fp));
-      } catch (e) {
-        console.error(`[ShieldWatch] ❌ Failed to parse fingerprint blocklist: ${e.message}`);
-      }
+      } catch (e) {}
     });
   });
   req.on('error',   () => {});
@@ -127,13 +210,9 @@ function fetchFingerprintBlocklist() {
   req.end();
 }
 
-fetchFingerprintBlocklist();
-setInterval(fetchFingerprintBlocklist, 30_000);
-
-// ─── Session Blocklist (synced from collector every 30s) ──────────────────────
 const blockedSessions = new Set();
-
 function fetchSessionBlocklist() {
+  if (!isInitialized && process.env.NODE_ENV === 'production') return;
   const module_ = COLLECTOR.useHttps ? https : http;
   const options  = {
     hostname: COLLECTOR.host,
@@ -154,7 +233,6 @@ function fetchSessionBlocklist() {
         const list = JSON.parse(data);
         blockedSessions.clear();
         list.forEach(s => blockedSessions.add(s));
-        if (list.length > 0) console.log(`[ShieldWatch] ⛔ Session blocklist synced: ${list.length} sessions`);
       } catch {}
     });
   });
@@ -162,9 +240,6 @@ function fetchSessionBlocklist() {
   req.on('timeout', () => req.destroy());
   req.end();
 }
-
-fetchSessionBlocklist();
-setInterval(fetchSessionBlocklist, 30_000);
 
 // ─── IDOR Detection ──────────────────────────────────────────────────────────
 function checkIDOR(req) {
@@ -771,5 +846,6 @@ module.exports = {
   honeypotHit, 
   trackLoginFailure, 
   reportNginxEvent, 
-  syncActiveUsers 
+  syncActiveUsers,
+  init
 };

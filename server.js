@@ -14,7 +14,7 @@ const path           = require('path');
 const fs             = require('fs');
 const cors           = require('cors');
 const helmet         = require('helmet');
-const bcrypt         = require('bcrypt');
+const bcrypt         = require('bcryptjs');
 const crypto         = require('crypto');
 const { exec }       = require('child_process');
 const { initDB, getDB, getPrepare, execVulnerable, logAudit } = require('./database');
@@ -74,16 +74,22 @@ app.use(sessionMiddleware);
 
 // ─── ShieldWatch RASP Sensor (optional) ───────────────────────────────────────
 let sw = null;
-if (process.env.SW_ENABLED === 'true') {
-  try {
-    sw = require('./shieldwatch-sensor');
-    app.use(sw.httpMiddleware);
-    console.log('[ShieldWatch] ✅ RASP sensor ACTIVE — Cerebro:', process.env.SW_CEREBRO_ADDR || '127.0.0.1:50051');
-  } catch (e) {
-    console.warn('[ShieldWatch] ⚠️  Sensor not loaded:', e.message);
+async function initShieldWatch() {
+  if (process.env.SW_ENABLED === 'true') {
+    try {
+      sw = require('./shieldwatch-sensor');
+      const connected = await sw.init();
+      if (connected) {
+        app.use(sw.httpMiddleware);
+      } else {
+        console.warn('[ShieldWatch] ⚠️  Running in PASSIVE mode (Collector unreachable)');
+      }
+    } catch (e) {
+      console.warn('[ShieldWatch] ⚠️  Sensor could not be loaded:', e.message);
+    }
+  } else {
+    console.log('[ShieldWatch] ⛔ Sensor DISABLED — app is UNPROTECTED (set SW_ENABLED=true to enable)');
   }
-} else {
-  console.log('[ShieldWatch] ⛔ Sensor DISABLED — app is UNPROTECTED (set SW_ENABLED=true to enable)');
 }
 
 // ─── Static Files ─────────────────────────────────────────────────────────────
@@ -633,13 +639,20 @@ function broadcastOnlineUsers() {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-initDB().then(() => {
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀 ZynChat running → http://localhost:${PORT}\n`);
-  });
-}).catch(err => {
-  console.error('[Fatal] DB init failed:', err);
-  process.exit(1);
-});
+async function startServer() {
+  try {
+    await initDB();
+    await initShieldWatch();
+    
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`\n🚀 ZynChat running → http://localhost:${PORT}\n`);
+    });
+  } catch (err) {
+    console.error('[Fatal] Server startup failed:', err);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 module.exports = { app, server };

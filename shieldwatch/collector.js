@@ -234,7 +234,10 @@ app.post('/api/auth/login', rateLimit(10, 15 * 60 * 1000), checkDashboardBruteFo
   const { password, user } = req.body; // user is optional display name
   if (!password) return res.status(401).json({ ok: false, error: 'Password required' });
 
-  if (password === ADMIN_PASS) {
+  const expBuf = Buffer.from(ADMIN_PASS);
+  const proBuf = Buffer.from(password || '');
+  const match = expBuf.length === proBuf.length && crypto.timingSafeEqual(expBuf, proBuf);
+  if (match) {
     req.session.isAdmin = true;
     req.session.adminUser = user || 'Admin';
     dashboardFailures.delete(req.ip);
@@ -655,6 +658,16 @@ app.post('/api/unblock-session', requireAdminAPI, (req, res) => {
   saveState();
   io.emit('blocked_session_update', Array.from(blockedSessions));
   res.json({ ok: true });
+});
+
+app.post('/api/block', requireAdminAPI, (req, res) => {
+  const { ip } = req.body;
+  if (!ip) return res.status(400).json({ ok: false, error: 'ip required' });
+  const clean = ip.replace(/^::ffff:/, '').split(':')[0].trim();
+  blockedIPs.add(clean);
+  io.emit('blocked_update', Array.from(blockedIPs));
+  saveState();
+  res.json({ ok: true, blocked: clean, total: blockedIPs.size });
 });
 
 app.post('/api/unblock', requireAdminAPI, (req, res) => {
