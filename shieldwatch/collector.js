@@ -174,6 +174,11 @@ function sanitize(obj) {
 }
 
 function selfMonitor(req, res, next) {
+  // [FIX] Skip telemetry routes to prevent RASP from blocking its own reports
+  if (req.path.startsWith('/api/event') || req.path.startsWith('/api/fingerprint') || req.path.startsWith('/api/active-users')) {
+    return next();
+  }
+
   sanitize(req.body);
   sanitize(req.query);
   
@@ -212,7 +217,12 @@ function requireApiToken(req, res, next) {
   const token = req.headers['x-shieldwatch-token'] || req.headers['x-sw-api-token'] || req.query.token;
   // Never log the API token - log presence only
   if (token === API_TOKEN) return next();
-  console.warn(`[Auth] ❌ REJECTED: Invalid token from ${req.ip}`);
+  
+  // [DEBUG] Log more info to identify mismatch
+  const maskedToken = token ? `${token.slice(0, 4)}...${token.slice(-4)}` : 'MISSING';
+  const maskedExpected = `${API_TOKEN.slice(0, 4)}...${API_TOKEN.slice(-4)}`;
+  console.warn(`[Auth] ❌ REJECTED: Invalid token from ${req.ip} | Sent: ${maskedToken} | Expected: ${maskedExpected}`);
+  
   res.status(401).json({ ok: false, error: 'Unauthorized: Invalid ShieldWatch Token' });
 }
 
@@ -421,6 +431,16 @@ app.get('/api/blocked-fp',       requireApiOrAdmin, (req, res) => res.json(Array
 app.get('/api/blocked-sessions', requireApiOrAdmin, (req, res) => res.json(Array.from(blockedSessions)));
 
 // 2. Protected Routes (Admin Dashboard)
+app.get('/api/live-status', requireApiOrAdmin, (req, res) => {
+  const all = Array.from(attackers.values());
+  const online = all.filter(a => a.isOnline === true);
+  res.json({
+    online_count: online.length,
+    online_users: online.map(a => ({ session: a.session, threat: a.threatScore || 0 })),
+    total_events: events.length
+  });
+});
+
 app.use(requireAdmin);
 
 // Dashboard Assets

@@ -12,7 +12,13 @@ let threatChart     = null;
 const timelineBuckets = new Array(120).fill(0); // 120 seconds = 2 mins
 
 // ─── DOM ──────────────────────────────────────────────────────────────────────
-const $ = id => document.getElementById(id);
+const $ = id => {
+  const el = document.getElementById(id);
+  if (!el && !id.includes('stat') && !id.includes('cnt')) {
+    // console.warn(`[SW] UI Element missing: ${id}`);
+  }
+  return el;
+};
 
 // ─── Socket Events ────────────────────────────────────────────────────────────
 socket.on('connect', () => {
@@ -678,7 +684,10 @@ if (themeToggle) {
 fetchStats();
 // ─── Timeline Chart ──────────────────────────────────────────────────────────
 function initTimeline() {
-  const ctx = $('threatTimeline').getContext('2d');
+  const canvas = $('threatTimeline');
+  if (!canvas) return;
+  
+  const ctx = canvas.getContext('2d');
   threatChart = new Chart(ctx, {
     type: 'line',
     data: {

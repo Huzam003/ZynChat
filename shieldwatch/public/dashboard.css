@@ -423,6 +423,17 @@ body.light-theme .theme-toggle { border-color: var(--purple); color: var(--purpl
 }
 
 /* ═══ CENTER — FEED ══════════════════════════════════════════════════════════ */
+/* ── Timeline Chart ── */
+.timeline-container {
+  padding: 0 12px 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+#threatTimeline {
+  max-height: 80px;
+  width: 100% !important;
+}
+
 .feed {
   flex: 1;
   overflow-y: auto;

@@ -234,7 +234,8 @@ def monitor_live_status():
     
     while True:
         try:
-            res = requests.get("http://localhost:3002/api/live-status", timeout=2)
+            headers = {"x-shieldwatch-token": os.getenv("SW_API_TOKEN", "")}
+            res = requests.get("http://localhost:3002/api/live-status", headers=headers, timeout=2)
             if res.status_code == 200:
                 data = res.json()
                 current_users = {u['session'] for u in data.get('online_users', [])}
@@ -292,6 +293,30 @@ def launch_local_dashboard():
     
     # Reload env to catch any newly generated secrets from collector's first run
     load_env()
+    
+    # Also sync the API Token if it exists in root .env
+    api_token = os.getenv("SW_API_TOKEN")
+    
+    # Check shieldwatch/.env specifically for collector-only secrets
+    sw_env_file = os.path.join(SCRIPT_DIR, "shieldwatch", ".env")
+    if os.path.exists(sw_env_file):
+        with open(sw_env_file, "r") as f:
+            for line in f:
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    val = v.strip()
+                    if k.strip() == "SW_ADMIN_PASS":
+                        os.environ["SW_ADMIN_PASS"] = val
+                    elif k.strip() == "SW_API_TOKEN":
+                        # Always prefer the token from .env if it's not the default placeholder
+                        if val != "sw-internal-token-xyz":
+                            os.environ["SW_API_TOKEN"] = val
+                            api_token = val
+    
+    # Final safety: If we are still using the default token, warn the user
+    if os.getenv("SW_API_TOKEN") == "sw-internal-token-xyz":
+        print(f"{C_RED}[!] WARNING: Still using insecure default SW_API_TOKEN!{C_RST}")
+
     admin_pass = os.getenv("SW_ADMIN_PASS", "Check .env")
     
     print("-" * 60)

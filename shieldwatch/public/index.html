@@ -137,6 +137,12 @@
       Live Threat Feed
       <span class="live-badge">● LIVE</span>
     </div>
+
+    <!-- ── TIMELINE CHART ── -->
+    <div class="timeline-container">
+      <canvas id="threatTimeline" height="80"></canvas>
+    </div>
+
     <div class="feed" id="feed">
       <div class="feed-empty" id="feedEmpty">
         <div class="feed-empty-icon">🛡️</div>
@@ -193,6 +199,7 @@
         <div class="profile-row"><span class="pr-lbl">City</span><span class="pr-val" id="pCity">—</span></div>
         <div class="profile-row"><span class="pr-lbl">ISP / Org</span><span class="pr-val" id="pOrg">—</span></div>
         <div class="profile-row"><span class="pr-lbl">Timezone</span><span class="pr-val" id="pTZ">—</span></div>
+        <div class="profile-row" style="display:none"><span class="pr-lbl">VPN History</span><span class="pr-val" id="pVPNHistory">—</span></div>
       </div>
 
       <!-- Device/Browser (from fingerprint) -->
@@ -205,6 +212,10 @@
         <div class="profile-row"><span class="pr-lbl">OS</span><span class="pr-val" id="pOS">—</span></div>
         <div class="profile-row"><span class="pr-lbl">Screen</span><span class="pr-val" id="pScreen">—</span></div>
         <div class="profile-row"><span class="pr-lbl">Language</span><span class="pr-val" id="pLang">—</span></div>
+        <div class="profile-row"><span class="pr-lbl">Timezone (FP)</span><span class="pr-val" id="pFPTZ">—</span></div>
+        <div class="profile-row"><span class="pr-lbl">CPU Cores</span><span class="pr-val" id="pCores">—</span></div>
+        <div class="profile-row"><span class="pr-lbl">GPU Info</span><span class="pr-val" id="pGPU">—</span></div>
+        <div class="profile-row"><span class="pr-lbl">Touch Supp.</span><span class="pr-val" id="pTouch">—</span></div>
       </div>
 
       <!-- Attack Summary -->
