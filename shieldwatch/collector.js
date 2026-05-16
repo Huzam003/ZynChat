@@ -279,7 +279,7 @@ app.post('/api/event', requireApiToken, async (req, res) => {
     ? rawSession
     : `anon@${evt.ip || 'unknown'}`;
 
-  const profile = upsertProfile(sessionKey, evt.ip, evt.ua, evt.geo);
+  const profile = upsertProfile(sessionKey, evt.ip, evt.ua, evt.geo, { sid: evt.sid });
 
   const tType = evt.threat?.type || 'unknown';
   profile.attackCounts[tType] = (profile.attackCounts[tType] || 0) + 1;
@@ -634,9 +634,12 @@ app.post('/api/unblock-fp', requireAdminAPI, (req, res) => {
 });
 
 app.post('/api/block-session', requireAdminAPI, (req, res) => {
-  const { session } = req.body;
-  if (!session) return res.json({ ok: false });
-  blockedSessions.add(session);
+  const { session, sid } = req.body;
+  if (!session && !sid) return res.json({ ok: false });
+  
+  if (session) blockedSessions.add(session);
+  if (sid) blockedSessions.add(sid);
+  
   saveState();
   io.emit('blocked_session_update', Array.from(blockedSessions));
   res.json({ ok: true });

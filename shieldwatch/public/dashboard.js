@@ -130,8 +130,14 @@ function animateNum(id, val) {
 
 // ─── Render Left Panel ────────────────────────────────────────────────────────
 function renderLeft(attackers) {
-  // 1. Online Users: Anyone currently connected
-  const online = attackers.filter(a => a.isOnline === true);
+  // 1. Online Users: Anyone connected AND NOT BLOCKED
+  const online = attackers.filter(a => {
+    if (!a.isOnline) return false;
+    const isBlocked = blockedIPSet.has(a.ip) || 
+                      (a.fpId && blockedFPSet.has(a.fpId)) || 
+                      blockedSessionSet.has(a.session);
+    return !isBlocked;
+  });
   
   // 2. Flagged Attackers: Anyone with a threatScore > 0
   const flagged = attackers.filter(a => (a.threatScore || 0) > 0);
@@ -419,7 +425,10 @@ async function blockCurrentSession() {
     const res = await fetch('/api/block-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session: a.session })
+      body: JSON.stringify({ 
+        session: a.session,
+        sid: a.sid || null // Send the raw cookie ID for surgical block
+      })
     });
     const data = await res.json();
     if (data.ok) {

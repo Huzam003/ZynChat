@@ -455,6 +455,7 @@ function buildEvent(req, threat, verdict) {
     threat,
     verdict,
     session:   req.session?.username || 'anonymous',
+    sid:       req.sessionID, // Raw session ID for enforcement
   };
 }
 
@@ -484,10 +485,10 @@ function httpMiddleware(req, res, next) {
     });
   }
 
-  // ── Session block (immediate termination) ──────────────────────────────────
-  const sessID = req.sessionID;
-  if (sessID && blockedSessions.has(sessID)) {
-    console.log(`[ShieldWatch] ⛔ BLOCKED SESSION: ${sessID} | IP: ${reqIP} | path: ${rawPath}`);
+  // ── Session block (Surgical cookie ID check) ───────────────────────────────
+  const sid = req.sessionID;
+  if (sid && blockedSessions.has(sid)) {
+    console.log(`[ShieldWatch] ⛔ BLOCKED SESSION: ${sid} | IP: ${reqIP} | path: ${rawPath}`);
     return res.status(403).json({
       ok: false, blocked: true,
       error:  'Your current session has been terminated by an administrator.',
@@ -647,7 +648,8 @@ function maskPayload(body) {
 function submitFingerprint(fingerprintData, req) {
   const ip      = extractIP(req);
   const session = req.session?.username || 'anonymous';
-  report('/api/fingerprint', { session, ip, fingerprint: fingerprintData });
+  const sid     = req.sessionID;
+  report('/api/fingerprint', { session, ip, sid, fingerprint: fingerprintData });
 }
 
 // ─── Sync Active Users ────────────────────────────────────────────────────────
