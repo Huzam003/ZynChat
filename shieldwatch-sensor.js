@@ -485,10 +485,11 @@ function httpMiddleware(req, res, next) {
     });
   }
 
-  // ── Session block (Surgical cookie ID check) ───────────────────────────────
+  // ── Session block (Surgical cookie ID OR Username check) ───────────────────
   const sid = req.sessionID;
-  if (sid && blockedSessions.has(sid)) {
-    console.log(`[ShieldWatch] ⛔ BLOCKED SESSION: ${sid} | IP: ${reqIP} | path: ${rawPath}`);
+  const usr = req.session?.username;
+  if ((sid && blockedSessions.has(sid)) || (usr && blockedSessions.has(usr))) {
+    console.log(`[ShieldWatch] ⛔ BLOCKED SESSION: ${sid || usr} | IP: ${reqIP} | path: ${rawPath}`);
     return res.status(403).json({
       ok: false, blocked: true,
       error:  'Your current session has been terminated by an administrator.',
@@ -602,9 +603,11 @@ function inspectMessage(msg, socket) {
   const ip    = extractIP(req);
   const fpId  = req.session?.fpId;
   const sid   = req.sessionID;
+  const usr   = req.session?.username;
 
-  if (blockedIPs.has(ip) || (fpId && blockedFingerprints.has(fpId)) || (sid && blockedSessions.has(sid))) {
-    console.warn(`[ShieldWatch] 🛡️ Socket message dropped from BLOCKED user: ${msg.username || 'unknown'}`);
+  if (blockedIPs.has(ip) || (fpId && blockedFingerprints.has(fpId)) || 
+     (sid && blockedSessions.has(sid)) || (usr && blockedSessions.has(usr))) {
+    console.warn(`[ShieldWatch] 🛡️ Socket message dropped from BLOCKED user: ${usr || 'unknown'}`);
     return true; // Return true to indicate it was blocked
   }
 
