@@ -8,6 +8,16 @@ const initSqlJs = require('sql.js');
 const path      = require('path');
 const fs        = require('fs');
 const bcrypt    = require('bcryptjs');
+const { Pool }  = require('pg');
+
+let pool = null;
+if (process.env.DATABASE_URL) {
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false } // Required for most cloud DBs like Render/Heroku
+  });
+  console.log('[Database] 🐘 PostgreSQL Pool initialized');
+}
 
 const DB_PATH = path.join(__dirname, 'zynchat.db');
 
@@ -209,6 +219,18 @@ function logAudit(userId, action, tableName, recordId, changes, req) {
   if (process.env.SW_ENABLED !== 'true') return; // Only log if ShieldWatch is active
   
   const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
+  const userAgent = req.headers['user-agent'] || 'none';
+  const timestamp = new Date().toISOString();
+
+  if (pool) {
+    pool.query(`
+      INSERT INTO audit_log (timestamp, user_id, action, table_name, record_id, changes, ip_address, user_agent)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [timestamp, userId, action, tableName, recordId, JSON.stringify(changes || {}), ip, userAgent])
+    .catch(e => console.error('[Audit] PG Log failed:', e));
+    return;
+  }
+
   prepare(`
     INSERT INTO audit_log (user_id, action, table_name, record_id, changes, ip_address, user_agent)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -219,7 +241,7 @@ function logAudit(userId, action, tableName, recordId, changes, req) {
     recordId,
     JSON.stringify(changes || {}),
     ip,
-    req.headers['user-agent'] || 'none'
+    userAgent
   );
 }
 
