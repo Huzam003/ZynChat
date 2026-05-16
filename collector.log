@@ -1,69 +1,50 @@
+[State] 📂 Restored 4 profiles and 2 events
 
 🛡️  ShieldWatch Collector  →  http://localhost:3002
     Dashboard              →  http://localhost:3002/
     Events API             →  POST http://localhost:3002/api/event
     Fingerprint API        →  POST http://localhost:3002/api/fingerprint
-
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+  
+[SELF-PROTECT] 🚨 Blocked SQLI attack on Collector from ::1
+[Event] XSS | BLOCKED | anon@127.0.0.1 | score:30
+[SELF-PROTECT] 🚨 Blocked PATH attack on Collector from ::1
+[Event] CMDINJECTION | BLOCKED | anon@127.0.0.1 | score:40
+[VPN] 🔄 Device 24ba5665… IP changed
+[Block-Sync] ⛔ Session anon@127.0.0.1 auto-blocked due to banned DeviceID: 24ba5665
+[Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080 | ⚠️ VPN ROTATION
+[Socket] ✅ Admin session verified for Admin
+[Socket] 🌐 Dashboard client connected: Uw9OPBNEUH-HeE56AAAB
+[Socket] 🔌 Dashboard client disconnected
+[Socket] ✅ Admin session verified for Admin
+[Socket] 🌐 Dashboard client connected: voQsUHfzYAXiNaoGAAAD
+[Socket] 🔌 Dashboard client disconnected
 [Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:alice | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:sffsfs | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:alice | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:sffsfs | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:alice | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:sffsfs | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:zdxfsdfsf | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:esfsfsf | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:esfsfsf | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:adadad | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:anon@127.0.0.1 | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Socket] 🔒 Unauthorized connection attempt from ::ffff:127.0.0.1
+[Socket] ✅ Admin session verified for Admin
+[Socket] 🌐 Dashboard client connected: 39dyX_5KiS_0z9_GAAAH
 [Fingerprint] session:admin | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Event] HONEYPOT | DECOY | admin | score:50
+[Socket] ✅ Admin session verified for Admin
+[Socket] 🌐 Dashboard client connected: 5iKAwBXf3aDGFtUUAAAJ
+[Socket] 🔌 Dashboard client disconnected
 [Fingerprint] session:admin | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
+[Socket] ✅ Admin session verified for Admin
+[Socket] 🌐 Dashboard client connected: FF8B2VrPTmWdNhIfAAAL
+[Reset] 🧹 Wiping all threat data (Requested by Admin)
+[Socket] 🔌 Dashboard client disconnected
+[Socket] 🔌 Dashboard client disconnected
+[Socket] ✅ Admin session verified for Admin
+[Socket] 🌐 Dashboard client connected: gWStpmvSmugcu3GnAAAN
+[Socket] ✅ Admin session verified for Admin
+[Socket] 🌐 Dashboard client connected: dDJZwcVrQlnE-yTOAAAP
+[Socket] 🔌 Dashboard client disconnected
 [Fingerprint] session:admin | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:adadad | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:adadad | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:admin | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:admin | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:admin | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:adadad | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:admin | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:anon@59.103.195.78 | Android 16 | 491x1119
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:mobile | Android 16 | 491x1119
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:admin | Linux | 1920x1080
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[VPN] 🔄 Device 24ba5665… IP changed 127.0.0.1 → 59.103.195.78 (session: "admin" → "anon@59.103.195.78")
-[Fingerprint] session:anon@59.103.195.78 | Linux | 1920x1080 | ⚠️ VPN ROTATION
-[Auth] Checking token for /api/fingerprint from 127.0.0.1. Token: PRESENT
-[Fingerprint] session:linux | Linux | 1920x1080
+[Socket] ✅ Admin session verified for Admin
+[Socket] 🌐 Dashboard client connected: rVNNt2PUsHoAxR8jAAAR
+[Event] XSS | BLOCKED | anon@127.0.0.1 | score:30
+[Event] CMDINJECTION | BLOCKED | admin | score:10
+[Socket] 🔌 Dashboard client disconnected
+[Socket] ✅ Admin session verified for Admin
+[Socket] 🌐 Dashboard client connected: 5EIL7bbWVr2ecviHAAAT
+[Socket] 🔌 Dashboard client disconnected
+[Socket] 🔌 Dashboard client disconnected

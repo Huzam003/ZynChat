@@ -1,11 +1,72 @@
-◇ injected env (1) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+nohup: ignoring input
+◇ injected env (5) from .env // tip: ⌘ override existing { override: true }
+[ShieldWatch] 📡 Collector URL: http://localhost:3002
 [ShieldWatch] ✅ RASP sensor ACTIVE — Cerebro: localhost:3002
 [DB] Loaded existing database from disk
 [DB] ZynChat database ready ✅
 
 🚀 ZynChat running → http://localhost:3001
 
-[ShieldWatch] 📡 Reporting to localhost:3002/api/fingerprint with token: sw-i...
-[+] admin connected (4-PJq_GtRe6EazgnAAAD)
+[ShieldWatch] ⛔ Session blocklist synced: 3 sessions
+[ShieldWatch] ⛔ Session blocklist synced: 3 sessions
+[ShieldWatch] ⛔ Session blocklist synced: 3 sessions
+[ShieldWatch] ⛔ Session blocklist synced: 3 sessions
+[ShieldWatch] ⛔ Session blocklist synced: 3 sessions
+[ShieldWatch] ⛔ Session blocklist synced: 3 sessions
+[ShieldWatch] ⛔ Session blocklist synced: 3 sessions
+[ShieldWatch] 🚨 SQLI | POST /api/login | BLOCKED | user:anonymous | ip:127.0.0.1
+[ShieldWatch] 📡 Reporting to localhost:3002/api/event
+[ShieldWatch] Scanning query: {"q":"<script>alert(1)</script>"}
+[ShieldWatch] 🚨 XSS | GET /api/search | BLOCKED | user:anonymous | ip:127.0.0.1
+[ShieldWatch] 📡 Reporting to localhost:3002/api/event
+[ShieldWatch] ❌ Report failed: 403 to /api/event
+[ShieldWatch] Scanning query: {"path":"../../../etc/passwd"}
+[ShieldWatch] 🚨 PATHTRAVERSAL | GET /api/file | BLOCKED | user:anonymous | ip:127.0.0.1
+[ShieldWatch] 📡 Reporting to localhost:3002/api/event
+[ShieldWatch] 🚨 CMDINJECTION | POST /api/tools/ping | BLOCKED | user:anonymous | ip:127.0.0.1
+[ShieldWatch] 📡 Reporting to localhost:3002/api/event
+[ShieldWatch] ❌ Report failed: 403 to /api/event
+[ShieldWatch] ⛔ Session blocklist synced: 3 sessions
+[ShieldWatch] 📡 Reporting to localhost:3002/api/fingerprint
+[ShieldWatch] ⛔ Session blocklist synced: 4 sessions
+[ShieldWatch] 🔒 BLOCKED FINGERPRINT: 24ba5665… | IP: 127.0.0.1 | path: /api/login
+[ShieldWatch] ⛔ Session blocklist synced: 4 sessions
+[ShieldWatch] ⛔ Session blocklist synced: 3 sessions
+[ShieldWatch] ⛔ Session blocklist synced: 2 sessions
+[ShieldWatch] 🔒 BLOCKED FINGERPRINT: 24ba5665… | IP: 127.0.0.1 | path: /
+[ShieldWatch] ⛔ Session blocklist synced: 2 sessions
+[ShieldWatch] ⛔ Session blocklist synced: 2 sessions
+[ShieldWatch] 📡 Reporting to localhost:3002/api/fingerprint
+[ShieldWatch] ⛔ Session blocklist synced: 2 sessions
+[ShieldWatch] ⛔ Session blocklist synced: 2 sessions
+[ShieldWatch] 📡 Reporting to localhost:3002/api/active-users
+[+] admin connected (AgToSoHus9t9FHfxAAAB)
+[ShieldWatch] 📡 Reporting to localhost:3002/api/fingerprint
+[ShieldWatch] 📡 Reporting to localhost:3002/api/active-users
+[ShieldWatch] ⛔ Session blocklist synced: 2 sessions
+[ShieldWatch] 🍯 HONEYPOT: /admin | user:admin | ip:127.0.0.1
+[ShieldWatch] 📡 Reporting to localhost:3002/api/event
+[ShieldWatch] 📡 Reporting to localhost:3002/api/active-users
 [-] admin disconnected
-[+] admin connected (9hCYE9Pdbo6WO0AZAAAF)
+[ShieldWatch] ⛔ Session blocklist synced: 2 sessions
+[ShieldWatch] 📡 Reporting to localhost:3002/api/active-users
+[+] admin connected (TioPjCSU8ciMbkWbAAAD)
+[ShieldWatch] 📡 Reporting to localhost:3002/api/fingerprint
+[ShieldWatch] 📡 Reporting to localhost:3002/api/active-users
+[ShieldWatch] ⛔ Session blocklist synced: 2 sessions
+[ShieldWatch] ⛔ Session blocklist synced: 2 sessions
+[ShieldWatch] 📡 Reporting to localhost:3002/api/active-users
+[-] admin disconnected
+[ShieldWatch] 📡 Reporting to localhost:3002/api/fingerprint
+[ShieldWatch] 📡 Reporting to localhost:3002/api/active-users
+[+] admin connected (Ko9wPc1hgV0uZ5LEAAAF)
+[ShieldWatch] 📡 Reporting to localhost:3002/api/active-users
+[ShieldWatch] 📡 Reporting to localhost:3002/api/active-users
+[ShieldWatch] 📡 Reporting to localhost:3002/api/active-users
+[-] admin disconnected
+[ShieldWatch] Scanning query: {"q":"<script>alert(1)</script>"}
+[ShieldWatch] 🚨 XSS | GET /api/search | BLOCKED | user:anonymous | ip:127.0.0.1
+[ShieldWatch] 📡 Reporting to localhost:3002/api/event
+[ShieldWatch] Scanning query: {"host":"8.8.8.8 && ls"}
+[ShieldWatch] 🚨 CMDINJECTION | GET /api/tools/ping | BLOCKED | user:admin | ip:127.0.0.1
+[ShieldWatch] 📡 Reporting to localhost:3002/api/event

@@ -19,7 +19,11 @@ const crypto = require('crypto');
 const RAW_ADDR  = process.env.SW_CEREBRO_ADDR || 'localhost:3002';
 const APP_ID    = process.env.SW_APP_ID       || 'zynchat';
 const LOG_ONLY  = process.env.SW_LOG_ONLY === 'true';
-const API_TOKEN = process.env.SW_API_TOKEN || 'sw-internal-token-xyz';
+const API_TOKEN = process.env.SW_API_TOKEN;
+if (!API_TOKEN || API_TOKEN === 'sw-internal-token-xyz') {
+  console.error('[ShieldWatch] 🚨 FATAL: SW_API_TOKEN not set or using insecure default!');
+  process.exit(1);
+}
 
 // ─── Shared Helpers ──────────────────────────────────────────────────────────
 function extractIP(req) {
@@ -253,6 +257,35 @@ function trackLoginFailure(req) {
   return false;
 }
 
+// ─── Registration Spam Protection ─────────────────────────────────────────────
+const registrationTracker = new Map(); // ip → [timestamp, ...]
+const REG_WINDOW_MS = 3600_000;        // 1 hour
+const REG_LIMIT = 5;                   // Max 5 accounts per hour
+
+function checkRegistrationSpam(req) {
+  const rawPath = (req.path || req.url || '/').split('?')[0];
+  if (rawPath !== '/api/register' || req.method !== 'POST') return null;
+  
+  const ip  = extractIP(req);
+  const now = Date.now();
+  const prev = (registrationTracker.get(ip) || []).filter(t => now - t < REG_WINDOW_MS);
+  prev.push(now);
+  
+  if (registrationTracker.size >= MAX_TRACKER_SIZE && !registrationTracker.has(ip)) {
+    registrationTracker.delete(registrationTracker.keys().next().value);
+  }
+  registrationTracker.set(ip, prev);
+  
+  if (prev.length > REG_LIMIT) {
+    return { 
+      type: 'registration-spam',
+      matched: 'Shield (App): Registration rate limit exceeded',
+      raw: `${prev.length} registrations in 1 hour from ${ip}`
+    };
+  }
+  return null;
+}
+
 // ─── DDoS / Rate-Limit Detection ─────────────────────────────────────────────
 const requestTracker = new Map();   // ip → [timestamp, ...]
 const DDOS_WINDOW_MS = 10_000;      // 10-second sliding window
@@ -352,17 +385,45 @@ const PATTERNS = {
   ],
 };
 
-// ─── Detect threat ────────────────────────────────────────────────────────────
-function detectThreats(value) {
+// ─── Detect threat (Hardened) ────────────────────────────────────────────────
+function detectThreats(value, depth = 0) {
   if (value == null || typeof value !== 'string') return null;
-  let decoded = value;
-  try { decoded = decodeURIComponent(value); } catch {}
+  if (depth > 3) return null; // Prevent recursion issues
 
-  for (const [type, patterns] of Object.entries(PATTERNS)) {
-    for (const re of patterns) {
-      if (re.test(value) || re.test(decoded)) {
-        const typeMap = { sqli: 'SQL Injection', xss: 'XSS Attempt', pathTraversal: 'Path Traversal', cmdInjection: 'Command Injection' };
-        return { type, matched: `Shield (App): ${typeMap[type] || type} signature detected`, raw: value.slice(0, 200) };
+  // Create variants of the payload to test against signatures
+  const variants = [
+    value,                               // Raw
+    value.toLowerCase(),                 // Lowercase normalization
+    value.replace(/\s+/g, '')            // Whitespace removal
+  ];
+
+  // Try URL decoding
+  try {
+    const uriDecoded = decodeURIComponent(value);
+    if (uriDecoded !== value) variants.push(uriDecoded);
+  } catch {}
+
+  // Try Base64 decoding (if it looks like base64)
+  if (value.length > 8 && /^[A-Za-z0-9+/=]+$/.test(value)) {
+    try {
+      const b64Decoded = Buffer.from(value, 'base64').toString('utf8');
+      // If it results in printable ASCII, it might be a payload
+      if (/^[\x20-\x7E\s]+$/.test(b64Decoded)) variants.push(b64Decoded);
+    } catch {}
+  }
+
+  for (const variant of variants) {
+    for (const [type, patterns] of Object.entries(PATTERNS)) {
+      for (const re of patterns) {
+        if (re.test(variant)) {
+          const typeMap = { sqli: 'SQL Injection', xss: 'XSS Attempt', pathTraversal: 'Path Traversal', cmdInjection: 'Command Injection' };
+          return { 
+            type, 
+            matched: `Shield (App): ${typeMap[type] || type} signature detected`, 
+            raw: value.slice(0, 200),
+            encoding: variant !== value ? 'encoded' : 'raw'
+          };
+        }
       }
     }
   }
@@ -575,6 +636,23 @@ function httpMiddleware(req, res, next) {
     report('/api/event', event);
     req._swHoneypot = true;
     return next(); // Let honeypot handler serve fake data
+  }
+
+  // Registration spam check
+  const spam = checkRegistrationSpam(req);
+  if (spam) {
+    const verdict = LOG_ONLY ? 'LOGGED' : 'BLOCKED';
+    const event   = buildEvent(req, spam, verdict);
+    console.log(`[ShieldWatch] 🛡️ REGISTRATION SPAM | ${reqIP} | ${verdict}`);
+    report('/api/event', event);
+    if (!LOG_ONLY) {
+      return res.status(429).json({
+        ok: false, blocked: true,
+        error: 'Too many registrations from this IP. Please try again later.',
+        threat: 'registration-spam',
+        ref: event.id
+      });
+    }
   }
 
   const threat = scanRequest(req);

@@ -412,6 +412,11 @@ app.post('/api/active-users', requireApiToken, (req, res) => {
   res.json({ ok: true });
 });
 
+// Sync Routes for Sensor
+app.get('/api/blocked',          requireApiOrAdmin, (req, res) => res.json(Array.from(blockedIPs)));
+app.get('/api/blocked-fp',       requireApiOrAdmin, (req, res) => res.json(Array.from(blockedFingerprints)));
+app.get('/api/blocked-sessions', requireApiOrAdmin, (req, res) => res.json(Array.from(blockedSessions)));
+
 // 2. Protected Routes (Admin Dashboard)
 app.use(requireAdmin);
 
@@ -605,6 +610,7 @@ function threatLevel(score) {
 app.get('/api/stats',            requireAdminAPI, (req, res) => {
   res.json({
     ...globalStats,
+    blocked:   blockedIPs.size + blockedFingerprints.size + blockedSessions.size,
     attackers: Array.from(attackers.values()).filter(a => a.threatScore > 0).length,
     logged:    events.length
   });
@@ -612,9 +618,7 @@ app.get('/api/stats',            requireAdminAPI, (req, res) => {
 
 app.get('/api/attackers',        requireAdminAPI, (req, res) => res.json(Array.from(attackers.values())));
 app.get('/api/events',           requireAdminAPI, (req, res) => res.json(events));
-app.get('/api/blocked',          requireAdminAPI, (req, res) => res.json(Array.from(blockedIPs)));
-app.get('/api/blocked-fp',       requireAdminAPI, (req, res) => res.json(Array.from(blockedFingerprints)));
-app.get('/api/blocked-sessions', requireAdminAPI, (req, res) => res.json(Array.from(blockedSessions)));
+
 
 app.post('/api/block-fp',        requireAdminAPI, (req, res) => {
   const { fpId } = req.body;

@@ -122,6 +122,20 @@ async function initDB() {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp  TEXT    DEFAULT (datetime('now')),
+      user_id    INTEGER,
+      action     TEXT    NOT NULL,
+      table_name TEXT,
+      record_id  INTEGER,
+      changes    TEXT,
+      ip_address TEXT,
+      user_agent TEXT
+    )
+  `);
+
   // ─── Seed Users (INSERT OR IGNORE — safe to run every boot) ──────────────────
   const demoUsers = [
     { username: 'admin',    password: 'admin123', role: 'admin', color: '#ef4444', bio: 'Platform Administrator' },
@@ -191,7 +205,25 @@ async function initDB() {
   console.log('[DB] ZynChat database ready ✅');
 }
 
+function logAudit(userId, action, tableName, recordId, changes, req) {
+  if (process.env.SW_ENABLED !== 'true') return; // Only log if ShieldWatch is active
+  
+  const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
+  prepare(`
+    INSERT INTO audit_log (user_id, action, table_name, record_id, changes, ip_address, user_agent)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    userId,
+    action,
+    tableName,
+    recordId,
+    JSON.stringify(changes || {}),
+    ip,
+    req.headers['user-agent'] || 'none'
+  );
+}
+
 function getDB()      { return db; }
 function getPrepare() { return prepare; }
 
-module.exports = { initDB, getDB, getPrepare, execVulnerable, saveDB };
+module.exports = { initDB, getDB, getPrepare, execVulnerable, saveDB, logAudit };

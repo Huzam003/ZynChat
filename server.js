@@ -17,7 +17,7 @@ const helmet         = require('helmet');
 const bcrypt         = require('bcrypt');
 const crypto         = require('crypto');
 const { exec }       = require('child_process');
-const { initDB, getDB, getPrepare, execVulnerable } = require('./database');
+const { initDB, getDB, getPrepare, execVulnerable, logAudit } = require('./database');
 
 const app    = express();
 const server = http.createServer(app);
@@ -27,7 +27,14 @@ const io     = new Server(server, {
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 const PORT           = process.env.PORT || 3001;
+const SW_ENABLED    = process.env.SW_ENABLED === 'true';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'zynchat-dev-secret-2024';
+
+// Hardening Requirement: Only enforce secure secret if ShieldWatch is active
+if (SW_ENABLED && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'zynchat-dev-secret-2024')) {
+  console.error('[ZynChat] 🚨 SHIELDWATCH ERROR: High-security mode requires a unique SESSION_SECRET!');
+  process.exit(1);
+}
 
 // ─── Session Middleware (shared with Socket.io) ───────────────────────────────
 const sessionMiddleware = session({
@@ -43,20 +50,23 @@ const sessionMiddleware = session({
   }
 });
 
-app.disable('x-powered-by');
-// app.use(cors()); // REMOVED for hardening - only use specific origins if needed
-app.use(helmet({ 
-  contentSecurityPolicy: {
-    directives: {
-      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      "script-src": ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
-      "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
-      "font-src": ["'self'", "fonts.gstatic.com"],
-      "img-src": ["'self'", "data:", "https:"],
-      "connect-src": ["'self'", "ws:", "wss:"],
+if (SW_ENABLED) {
+  app.disable('x-powered-by');
+  app.use(helmet({ 
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "script-src": ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+        "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+        "font-src": ["'self'", "fonts.gstatic.com"],
+        "img-src": ["'self'", "data:", "https:"],
+        "connect-src": ["'self'", "ws:", "wss:"],
+      }
     }
-  }
-}));
+  }));
+} else {
+  console.warn('[ZynChat] ⚠️  SECURITY WARNING: Running in UNPROTECTED mode (SW_ENABLED=false)');
+}
 app.use(express.json({ limit: '512kb' }));
 app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 app.set('trust proxy', 1); // Allow secure cookies on Render/proxies
@@ -165,6 +175,8 @@ app.post('/api/login', (req, res) => {
     req.session.username = user.username;
     req.session.role     = user.role;
 
+    logAudit(user.id, 'LOGIN_SUCCESS', 'users', user.id, {}, req);
+
     res.json({
       ok: true,
       user: {
@@ -206,6 +218,8 @@ app.post('/api/register', (req, res) => {
     req.session.userId   = user.id;
     req.session.username = user.username;
     req.session.role     = user.role;
+
+    logAudit(user.id, 'REGISTER_SUCCESS', 'users', user.id, {}, req);
 
     res.json({
       ok: true,
@@ -421,6 +435,7 @@ app.post('/api/profile/update', requireAuth, (req, res) => {
   }
   const updated = prepare('SELECT id,username,role,avatar_color,bio FROM users WHERE id = ?')
     .get(req.session.userId);
+  logAudit(req.session.userId, 'PROFILE_UPDATE', 'users', req.session.userId, { bio, avatar_color, username }, req);
   res.json({ ok: true, message: '✅ Profile updated successfully.', user: updated });
 });
 
@@ -563,6 +578,8 @@ io.on('connection', (socket) => {
 
     // ShieldWatch Socket.io hook (Returns true if blocked)
     if (sw && sw.inspectMessage && sw.inspectMessage(msg, socket)) return;
+
+    logAudit(u.userId, 'MESSAGE_SEND', 'messages', result.lastInsertRowid, { room_id: rid }, socket.request);
 
     io.to(`room:${rid}`).emit('chat_message', msg);
   });

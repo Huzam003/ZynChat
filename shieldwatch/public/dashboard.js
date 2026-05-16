@@ -434,6 +434,7 @@ async function blockCurrentSession() {
     if (data.ok) {
       blockedSessionSet.add(a.session);
       updateBlockBtn(a);
+      fetchStats();
       showToast(`✂️ Session ${a.session.slice(0,8)}... kicked!`, 'orange');
     }
   } catch (e) { console.error(e); }
@@ -453,6 +454,7 @@ async function unblockCurrentSession() {
     if (data.ok) {
       blockedSessionSet.delete(a.session);
       updateBlockBtn(a);
+      fetchStats();
       showToast(`✅ Session restored`, 'green');
     }
   } catch (e) { console.error(e); }
@@ -478,6 +480,7 @@ async function blockCurrentFP() {
     if (data.ok) {
       blockedFPSet.add(a.fpId);
       updateBlockBtn(a);
+      fetchStats();
       showToast(`🔒 Device Fingerprint blocked!`, 'red');
     }
   } catch (e) { console.error(e); }
@@ -497,6 +500,7 @@ async function unblockCurrentFP() {
     if (data.ok) {
       blockedFPSet.delete(a.fpId);
       updateBlockBtn(a);
+      fetchStats();
       showToast(`✅ Device Fingerprint unblocked`, 'green');
     }
   } catch (e) { console.error(e); }
@@ -579,6 +583,7 @@ async function unblockFingerprint(fpId) {
       const a = findAttackerByFP(fpId);
       if (a) updateBlockBtn(a);
       renderBlockedList();
+      fetchStats();
       showToast(`✅ Device Fingerprint unblocked`, 'green');
     }
   } catch (e) { console.error(e); }
@@ -597,6 +602,7 @@ async function unblockSession(session) {
       const a = findAttackerBySession(session);
       if (a) updateBlockBtn(a);
       renderBlockedList();
+      fetchStats();
       showToast(`✅ Session unblocked`, 'green');
     }
   } catch (e) { console.error(e); }
