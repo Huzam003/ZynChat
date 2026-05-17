@@ -70,8 +70,7 @@ socket.on('force_logout', (data) => {
   alert(reason);
   window.location.href = '/';
 });
-
-
+socket.on('chat_message', (msg) => {
   appendMessage(msg);
   scrollToBottom();
 });
