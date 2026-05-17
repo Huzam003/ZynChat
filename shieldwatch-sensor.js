@@ -864,6 +864,11 @@ function reportNginxEvent(req, reason) {
   report('/api/event', event);
 }
 
+// [FIX] Expose blockedSessions set so server.js can kick open WebSockets
+function getBlockedSessions() {
+  return blockedSessions;
+}
+
 module.exports = { 
   httpMiddleware, 
   middleware: httpMiddleware, 
@@ -874,5 +879,6 @@ module.exports = {
   trackLoginFailure, 
   reportNginxEvent, 
   syncActiveUsers,
+  getBlockedSessions,
   init
 };

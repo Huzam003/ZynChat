@@ -650,8 +650,21 @@ $('resetBtn').addEventListener('click', async () => {
 const logoutBtn = $('logoutBtn');
 if (logoutBtn) {
   logoutBtn.onclick = async () => {
-    const res = await fetch('/api/auth/logout', { method: 'POST' });
-    if (res.ok) window.location.href = 'login';
+    try {
+      logoutBtn.disabled = true;
+      logoutBtn.textContent = 'Logging out...';
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      if (res.ok) {
+        window.location.href = '/login';
+      } else {
+        showToast('❌ Logout failed — try refreshing', 'red');
+        logoutBtn.disabled = false;
+        logoutBtn.textContent = 'Logout';
+      }
+    } catch (e) {
+      console.error('Logout error:', e);
+      window.location.href = '/login'; // Force redirect anyway
+    }
   };
 }
 

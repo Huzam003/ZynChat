@@ -667,7 +667,10 @@ app.post('/api/block-session', requireAdminAPI, (req, res) => {
 
 app.post('/api/unblock-session', requireAdminAPI, (req, res) => {
   const { session } = req.body;
+  // [FIX] Also remove the raw sid if it was stored alongside the username
   blockedSessions.delete(session);
+  const profile = attackers.get(session);
+  if (profile && profile.sid) blockedSessions.delete(profile.sid);
   saveState();
   io.emit('blocked_session_update', Array.from(blockedSessions));
   res.json({ ok: true });

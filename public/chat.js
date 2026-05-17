@@ -63,7 +63,15 @@ socket.on('disconnect', () => {
   console.log('[Socket] Disconnected');
 });
 
-socket.on('chat_message', (msg) => {
+// [FIX] ShieldWatch: kick blocked users back to login instantly
+socket.on('force_logout', (data) => {
+  const reason = (data && data.reason) || 'Your session has been terminated by an administrator.';
+  console.warn('[ShieldWatch] Force logout:', reason);
+  alert(reason);
+  window.location.href = '/';
+});
+
+
   appendMessage(msg);
   scrollToBottom();
 });

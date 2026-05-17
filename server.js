@@ -614,6 +614,26 @@ io.on('connection', (socket) => {
     console.log(`[-] ${user.username} disconnected`);
   });
 
+  // ── [FIX] Kick socket immediately when ShieldWatch blocks this session ───────
+  // sensor httpMiddleware blocks HTTP requests, but open WebSocket stays alive.
+  // Poll every 3s; if session or sid appears in blockedSessions, force disconnect.
+  const kickInterval = setInterval(() => {
+    if (!sw) return;
+    try {
+      const blockedList = sw.getBlockedSessions ? sw.getBlockedSessions() : null;
+      if (!blockedList) return;
+      const sid = socket.request.sessionID;
+      const usr = socket.request.session?.username;
+      if ((sid && blockedList.has(sid)) || (usr && blockedList.has(usr))) {
+        console.log(`[ShieldWatch] ⛔ Kicking blocked socket: ${usr || sid}`);
+        socket.emit('force_logout', { reason: 'Your session has been blocked by an administrator.' });
+        socket.disconnect(true);
+      }
+    } catch (_) {}
+  }, 3000);
+
+  socket.on('disconnect', () => clearInterval(kickInterval));
+
   console.log(`[+] ${user.username} connected (${socket.id})`);
 });
 
