@@ -130,6 +130,33 @@ async function init() {
         req.on('error', reject);
         req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
         req.end();
+      }),
+      // [FIX] Session blocklist was missing from init — blocks only applied after first 30s interval
+      new Promise((resolve, reject) => {
+        const module_ = COLLECTOR.useHttps ? https : http;
+        const options = {
+          hostname: COLLECTOR.host,
+          port: COLLECTOR.port,
+          path: '/api/blocked-sessions',
+          method: 'GET',
+          headers: { 'x-shieldwatch-token': API_TOKEN },
+          timeout: 4000,
+        };
+        const req = module_.request(options, res => {
+          let data = '';
+          res.on('data', c => data += c);
+          res.on('end', () => {
+            try {
+              const list = JSON.parse(data);
+              blockedSessions.clear();
+              list.forEach(s => blockedSessions.add(s));
+              resolve();
+            } catch (e) { reject(e); }
+          });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+        req.end();
       })
     ]);
   }, 'Initial sync');
@@ -137,10 +164,10 @@ async function init() {
   if (success) {
     console.log('[ShieldWatch] ✅ RASP sensor initialized successfully.');
     isInitialized = true;
-    // Start background sync
-    setInterval(fetchBlocklist, 30_000);
-    setInterval(fetchFingerprintBlocklist, 30_000);
-    setInterval(fetchSessionBlocklist, 30_000);
+    // [FIX] Reduced from 30s to 5s so blocks apply near-immediately after dashboard action
+    setInterval(fetchBlocklist, 5_000);
+    setInterval(fetchFingerprintBlocklist, 5_000);
+    setInterval(fetchSessionBlocklist, 5_000);
     return true;
   } else {
     console.error('[ShieldWatch] ❌ Critical: Could not connect to collector. Running in PASSIVE mode.');

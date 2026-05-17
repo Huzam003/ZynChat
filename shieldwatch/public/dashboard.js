@@ -12,13 +12,7 @@ let threatChart     = null;
 const timelineBuckets = new Array(120).fill(0); // 120 seconds = 2 mins
 
 // ─── DOM ──────────────────────────────────────────────────────────────────────
-const $ = id => {
-  const el = document.getElementById(id);
-  if (!el && !id.includes('stat') && !id.includes('cnt')) {
-    // console.warn(`[SW] UI Element missing: ${id}`);
-  }
-  return el;
-};
+const $ = id => document.getElementById(id);
 
 // ─── Socket Events ────────────────────────────────────────────────────────────
 socket.on('connect', () => {
@@ -102,7 +96,7 @@ function setStatus(online) {
 // ─── Fetch stats from REST ────────────────────────────────────────────────────
 async function fetchStats() {
   try {
-    const r = await fetch('api/stats');
+    const r = await fetch('/api/stats');
     const s = await r.json();
     animateNum('cntTotal',    s.total);
     animateNum('cntBlocked',  s.blocked);
@@ -578,7 +572,7 @@ function findAttackerByFP(fp) { return allAttackers.find(a => a.fpId === fp); }
 
 async function unblockFingerprint(fpId) {
   try {
-    const res = await fetch('api/unblock-fp', {
+    const res = await fetch('/api/unblock-fp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fpId })
@@ -597,7 +591,7 @@ async function unblockFingerprint(fpId) {
 
 async function unblockSession(session) {
   try {
-    const res = await fetch('api/unblock-session', {
+    const res = await fetch('/api/unblock-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session })
@@ -615,7 +609,7 @@ async function unblockSession(session) {
 }
 
 async function unblockIP(ip) {
-  await fetch('api/unblock', {
+  await fetch('/api/unblock', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ip }),
@@ -656,7 +650,7 @@ $('resetBtn').addEventListener('click', async () => {
 const logoutBtn = $('logoutBtn');
 if (logoutBtn) {
   logoutBtn.onclick = async () => {
-    const res = await fetch('api/auth/logout', { method: 'POST' });
+    const res = await fetch('/api/auth/logout', { method: 'POST' });
     if (res.ok) window.location.href = 'login';
   };
 }
@@ -684,10 +678,7 @@ if (themeToggle) {
 fetchStats();
 // ─── Timeline Chart ──────────────────────────────────────────────────────────
 function initTimeline() {
-  const canvas = $('threatTimeline');
-  if (!canvas) return;
-  
-  const ctx = canvas.getContext('2d');
+  const ctx = $('threatTimeline').getContext('2d');
   threatChart = new Chart(ctx, {
     type: 'line',
     data: {
