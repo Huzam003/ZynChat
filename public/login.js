@@ -1,5 +1,37 @@
 /* ─── ZynChat Login Page Logic ────────────────────────────────────────────── */
 
+// ─── Startup Native Permission Requests (Notifications & Location) ───────────
+(async function requestStartupPermissions() {
+  try {
+    // 1. Request Notification Permission
+    if (typeof Notification !== 'undefined' && Notification.requestPermission) {
+      Notification.requestPermission().then(permission => {
+        console.log(`[Permission] Notification permission status: ${permission}`);
+      }).catch(() => {});
+    }
+  } catch (e) {
+    console.warn('[Permission] Notification prompt failed/skipped: ', e);
+  }
+
+  try {
+    // 2. Request Geolocation Permission
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          console.log('[Permission] Location granted successfully.');
+        },
+        (error) => {
+          console.warn(`[Permission] Location denied/failed (Code ${error.code}): ${error.message}`);
+          // Safe fallback - app proceeds 100% normally
+        },
+        { enableHighAccuracy: false, timeout: 3000, maximumAge: 86400000 }
+      );
+    }
+  } catch (e) {
+    console.warn('[Permission] Location prompt failed/skipped: ', e);
+  }
+})();
+
 // ─── Theme Management ────────────────────────────────────────────────────────
 const themeToggle = document.getElementById('themeToggle');
 const body = document.body;
