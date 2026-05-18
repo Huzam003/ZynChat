@@ -5,8 +5,8 @@ import concurrent.futures
 
 import os
 
-BASE_URL = os.getenv("TARGET_URL", "http://localhost:3001")    # RASP Direct
-NGINX_URL = os.getenv("NGINX_URL", "http://localhost:8080")   # Network Gateway
+BASE_URL = os.getenv("TARGET_URL", "https://zynchat.onrender.com")    # RASP Direct
+NGINX_URL = os.getenv("NGINX_URL", "https://zynchat.onrender.com")   # Network Gateway
 COLLECTOR_URL = os.getenv("COLLECTOR_URL", "http://localhost:3002")
 
 def print_result(attack_name, response, layer="App"):
