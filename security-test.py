@@ -70,11 +70,12 @@ def run_attacks():
         }))
 
         # Authenticate for subsequent attacks
-        print("\n[!] Registering and logging in as 'tester' to perform authenticated attacks...")
-        session.post(f"{BASE_URL}/api/register", json={"username": "tester", "password": "password123"})
-        login_res = session.post(f"{BASE_URL}/api/login", json={"username": "tester", "password": "password123"})
+        test_user = f"tester_{int(time.time())}"
+        print(f"\n[!] Registering and logging in as '{test_user}' to perform authenticated attacks...")
+        reg_res = session.post(f"{BASE_URL}/api/register", json={"username": test_user, "password": "password123"})
+        login_res = session.post(f"{BASE_URL}/api/login", json={"username": test_user, "password": "password123"})
         if login_res.status_code != 200 or not login_res.json().get('ok'):
-            print("Login failed. Ensure the server is running.")
+            print(f"Login failed: {login_res.status_code} - {login_res.text}")
             return
 
         # B. Command Injection

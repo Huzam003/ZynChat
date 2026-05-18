@@ -73,6 +73,18 @@ let globalStats = {
   byType:  {}
 };
 
+// ─── Global Data Store (Declared early for access by all routes) ─────────────────
+const events    = [];           // all threat events, newest first
+let lastEventHash = '0000000000000000'; // Telemetry Hash Chain Root
+const attackers = new Map();    // sessionKey → attacker profile
+let lastSyncTime = Date.now(); // Track last time we heard from the sensor
+const geoCache  = new Map();    // ip → geo data
+
+const blockedIPs          = new Set();
+const blockedFingerprints = new Set();
+const blockedSessions     = new Set(); // [NEW] For surgical session blocking
+const fingerprintIndex    = new Map();
+
 const sessionMiddleware = session({
   name:              'sw.sid',
   secret:            SES_SECRET,
@@ -174,6 +186,11 @@ function sanitize(obj) {
 }
 
 function selfMonitor(req, res, next) {
+  // [FIX] Bypass self-protection for telemetry report endpoints carrying malicious attack payloads
+  if (req.path === '/api/event' || req.path === '/api/fingerprint') {
+    return next();
+  }
+
   sanitize(req.body);
   sanitize(req.query);
   
@@ -199,12 +216,8 @@ app.use(selfMonitor);
 // 1. Protect Admin Dashboard
 function requireAdmin(req, res, next) {
   if (req.session.isAdmin) return next();
+  if (req.path === '/login' || req.path.startsWith('/api/auth')) return next();
   res.redirect('/login');
-}
-
-function requireAdminAPI(req, res, next) {
-  if (req.session && req.session.isAdmin) return next();
-  res.status(401).json({ ok: false, error: 'Unauthorized' });
 }
 
 // 2. Protect Inbound API (Sensor -> Collector)
@@ -234,10 +247,7 @@ app.post('/api/auth/login', rateLimit(10, 15 * 60 * 1000), checkDashboardBruteFo
   const { password, user } = req.body; // user is optional display name
   if (!password) return res.status(401).json({ ok: false, error: 'Password required' });
 
-  const expBuf = Buffer.from(ADMIN_PASS);
-  const proBuf = Buffer.from(password || '');
-  const match = expBuf.length === proBuf.length && crypto.timingSafeEqual(expBuf, proBuf);
-  if (match) {
+  if (password === ADMIN_PASS) {
     req.session.isAdmin = true;
     req.session.adminUser = user || 'Admin';
     dashboardFailures.delete(req.ip);
@@ -250,19 +260,6 @@ app.post('/api/auth/login', rateLimit(10, 15 * 60 * 1000), checkDashboardBruteFo
   dashboardFailures.set(req.ip, fail);
   
   res.status(401).json({ ok: false, error: 'Access Denied: Invalid Security Credential' });
-});
-
-// POST /api/auth/logout  — destroy admin session
-app.post('/api/auth/logout', (req, res) => {
-  req.session.destroy(err => {
-    if (err) {
-      console.error('[Auth] Logout session destroy error:', err);
-      return res.status(500).json({ ok: false, error: 'Logout failed' });
-    }
-    res.clearCookie('connect.sid');
-    console.log('[Auth] ✅ Admin logged out');
-    res.json({ ok: true });
-  });
 });
 
 // 1. Inbound API (Sensor -> Collector)
@@ -295,7 +292,7 @@ app.post('/api/event', requireApiToken, async (req, res) => {
     ? rawSession
     : `anon@${evt.ip || 'unknown'}`;
 
-  const profile = upsertProfile(sessionKey, evt.ip, evt.ua, evt.geo, { sid: evt.sid });
+  const profile = upsertProfile(sessionKey, evt.ip, evt.ua, evt.geo);
 
   const tType = evt.threat?.type || 'unknown';
   profile.attackCounts[tType] = (profile.attackCounts[tType] || 0) + 1;
@@ -308,7 +305,6 @@ app.post('/api/event', requireApiToken, async (req, res) => {
   profile.threat      = threatLevel(profile.threatScore);
 
   // Update global stats
-  globalStats.total++;
   if (evt.verdict === 'BLOCKED') globalStats.blocked++;
   if (evt.verdict === 'DECOY')   globalStats.decoys++;
   if (evt.verdict === 'LOGGED')  globalStats.logged++;
@@ -428,7 +424,7 @@ app.post('/api/active-users', requireApiToken, (req, res) => {
   res.json({ ok: true });
 });
 
-// Sync Routes for Sensor
+// [NEW] Moved block lists GET endpoints above requireAdmin so sensor can access them using API Token
 app.get('/api/blocked',          requireApiOrAdmin, (req, res) => res.json(Array.from(blockedIPs)));
 app.get('/api/blocked-fp',       requireApiOrAdmin, (req, res) => res.json(Array.from(blockedFingerprints)));
 app.get('/api/blocked-sessions', requireApiOrAdmin, (req, res) => res.json(Array.from(blockedSessions)));
@@ -443,18 +439,8 @@ app.get('/dashboard.js', (req, res) => res.sendFile(path.join(__dirname, 'public
 app.get('/dashboard.css', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.css')));
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DATA STORE
+// DATA STORE (Declared globally at the top of the file)
 // ─────────────────────────────────────────────────────────────────────────────
-const events    = [];           // all threat events, newest first
-let lastEventHash = '0000000000000000'; // Telemetry Hash Chain Root
-const attackers = new Map();    // sessionKey → attacker profile
-let lastSyncTime = Date.now(); // Track last time we heard from the sensor
-const geoCache  = new Map();    // ip → geo data
-
-const blockedIPs          = new Set();
-const blockedFingerprints = new Set();
-const blockedSessions     = new Set(); // [NEW] For surgical session blocking
-const fingerprintIndex    = new Map();
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
 function saveState() {
@@ -534,14 +520,7 @@ async function getGeoInfo(ip) {
       http.get(`http://ipapi.co/${ip}/json/`, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
-        res.on('end', () => {
-          try {
-            resolve(JSON.parse(data));
-          } catch (e) {
-            console.warn(`[GeoIP] ⚠️  Invalid JSON from ipapi.co for IP ${ip}`);
-            resolve({ country_name: 'Unknown', city: 'Unknown', org: 'ISP' });
-          }
-        });
+        res.on('end', () => resolve(JSON.parse(data)));
       }).on('error', reject);
     });
 
@@ -623,20 +602,19 @@ function threatLevel(score) {
 }
 
 // ─── API Endpoints (Admin Protected) ──────────────────────────────────────────
-app.get('/api/stats',            requireAdminAPI, (req, res) => {
+app.get('/api/stats', (req, res) => {
   res.json({
     ...globalStats,
-    blocked:   blockedIPs.size + blockedFingerprints.size + blockedSessions.size,
     attackers: Array.from(attackers.values()).filter(a => a.threatScore > 0).length,
     logged:    events.length
   });
 });
 
-app.get('/api/attackers',        requireAdminAPI, (req, res) => res.json(Array.from(attackers.values())));
-app.get('/api/events',           requireAdminAPI, (req, res) => res.json(events));
+app.get('/api/attackers', (req, res) => res.json(Array.from(attackers.values())));
+app.get('/api/events',    (req, res) => res.json(events));
 
-
-app.post('/api/block-fp',        requireAdminAPI, (req, res) => {
+// ─── Block Actions (Hardened) ────────────────────────────────────────────────
+app.post('/api/block-fp', (req, res) => {
   const { fpId } = req.body;
   if (!fpId) return res.json({ ok: false });
   blockedFingerprints.add(fpId);
@@ -645,7 +623,7 @@ app.post('/api/block-fp',        requireAdminAPI, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/unblock-fp', requireAdminAPI, (req, res) => {
+app.post('/api/unblock-fp', (req, res) => {
   const { fpId } = req.body;
   blockedFingerprints.delete(fpId);
   saveState();
@@ -653,40 +631,24 @@ app.post('/api/unblock-fp', requireAdminAPI, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/block-session', requireAdminAPI, (req, res) => {
-  const { session, sid } = req.body;
-  if (!session && !sid) return res.json({ ok: false });
-  
-  if (session) blockedSessions.add(session);
-  if (sid) blockedSessions.add(sid);
-  
-  saveState();
-  io.emit('blocked_session_update', Array.from(blockedSessions));
-  res.json({ ok: true });
-});
-
-app.post('/api/unblock-session', requireAdminAPI, (req, res) => {
+app.post('/api/block-session', (req, res) => {
   const { session } = req.body;
-  // [FIX] Also remove the raw sid if it was stored alongside the username
-  blockedSessions.delete(session);
-  const profile = attackers.get(session);
-  if (profile && profile.sid) blockedSessions.delete(profile.sid);
+  if (!session) return res.json({ ok: false });
+  blockedSessions.add(session);
   saveState();
   io.emit('blocked_session_update', Array.from(blockedSessions));
   res.json({ ok: true });
 });
 
-app.post('/api/block', requireAdminAPI, (req, res) => {
-  const { ip } = req.body;
-  if (!ip) return res.status(400).json({ ok: false, error: 'ip required' });
-  const clean = ip.replace(/^::ffff:/, '').split(':')[0].trim();
-  blockedIPs.add(clean);
-  io.emit('blocked_update', Array.from(blockedIPs));
+app.post('/api/unblock-session', (req, res) => {
+  const { session } = req.body;
+  blockedSessions.delete(session);
   saveState();
-  res.json({ ok: true, blocked: clean, total: blockedIPs.size });
+  io.emit('blocked_session_update', Array.from(blockedSessions));
+  res.json({ ok: true });
 });
 
-app.post('/api/unblock', requireAdminAPI, (req, res) => {
+app.post('/api/unblock', (req, res) => {
   const { ip } = req.body;
   blockedIPs.delete(ip);
   saveState();
@@ -694,8 +656,7 @@ app.post('/api/unblock', requireAdminAPI, (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/reset', requireAdminAPI, (req, res) => {
-  console.log(`[Reset] 🧹 Wiping all threat data (Requested by ${req.session.adminUser || 'Admin'})`);
+app.post('/api/reset', (req, res) => {
   events.length = 0;
   attackers.clear();
   blockedIPs.clear();

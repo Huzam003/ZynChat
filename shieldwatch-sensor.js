@@ -19,34 +19,7 @@ const crypto = require('crypto');
 const RAW_ADDR  = process.env.SW_CEREBRO_ADDR || 'localhost:3002';
 const APP_ID    = process.env.SW_APP_ID       || 'zynchat';
 const LOG_ONLY  = process.env.SW_LOG_ONLY === 'true';
-const API_TOKEN = process.env.SW_API_TOKEN;
-if (!API_TOKEN || API_TOKEN === 'sw-internal-token-xyz') {
-  console.error('[ShieldWatch] 🚨 FATAL: SW_API_TOKEN not set or using insecure default!');
-  process.exit(1);
-}
-
-
-const express = require('express');
-
-// ─── Global RASP Interceptor (Zero-Code Integration) ──────────────────────────
-const originalEmit = http.Server.prototype.emit;
-http.Server.prototype.emit = function(eventName, req, res) {
-  if (eventName === 'request') {
-    if (req.method === 'POST' && req.url && req.url.startsWith('/api/register')) {
-      const spam = checkRegistrationSpam(req);
-      if (spam) {
-        const event = buildEvent(req, spam, 'BLOCKED');
-        console.log(`[ShieldWatch] 🛡️ REGISTRATION SPAM | ${extractIP(req)} | BLOCKED`);
-        report('/api/event', event);
-        res.statusCode = 429;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({ ok: false, blocked: true, error: 'Too many registrations from this IP.' }));
-        return;
-      }
-    }
-  }
-  return originalEmit.apply(this, arguments);
-};
+const API_TOKEN = process.env.SW_API_TOKEN || 'sw-internal-token-xyz';
 
 // ─── Shared Helpers ──────────────────────────────────────────────────────────
 function extractIP(req) {
@@ -76,130 +49,56 @@ function parseAddr(addr) {
 }
 
 const COLLECTOR = parseAddr(RAW_ADDR);
-const COLLECTOR_URL = `${COLLECTOR.useHttps ? 'https' : 'http'}://${COLLECTOR.host}${COLLECTOR.port === 443 || COLLECTOR.port === 80 ? '' : ':' + COLLECTOR.port}`;
-console.log(`[ShieldWatch] 📡 Collector URL: ${COLLECTOR_URL}`);
 
-// ─── IP Blocklist (synced from ShieldWatch collector every 30s) ──────────────
+// ─── IP Blocklist (synced from ShieldWatch collector every 5s) ──────────────
 const blockedIPs = new Set();
+const blockedFingerprints = new Set();
+const blockedSessions = new Set();
 
-let isInitialized = false;
-
-async function fetchWithRetry(fn, label, retries = 3, delay = 2000) {
-  for (let i = 1; i <= retries; i++) {
-    try {
-      await fn();
-      return true;
-    } catch (e) {
-      console.warn(`[ShieldWatch] ⚠️ ${label} attempt ${i} failed: ${e.message}`);
-      if (i < retries) await new Promise(r => setTimeout(r, delay));
-    }
-  }
-  return false;
+let ioInstance = null;
+function setIO(io) {
+  ioInstance = io;
+  console.log('[ShieldWatch] 🔌 Socket.io instance integrated in sensor');
+  enforceActiveBlocks();
 }
 
-async function init() {
-  console.log(`[ShieldWatch] 🛡️ Initializing RASP Sensor (Collector: ${COLLECTOR_URL})...`);
-  
-  const success = await fetchWithRetry(async () => {
-    await Promise.all([
-      new Promise((resolve, reject) => {
-        const module_ = COLLECTOR.useHttps ? https : http;
-        const options = {
-          hostname: COLLECTOR.host,
-          port: COLLECTOR.port,
-          path: '/api/blocked',
-          method: 'GET',
-          headers: { 'x-shieldwatch-token': API_TOKEN },
-          timeout: 4000,
-        };
-        const req = module_.request(options, res => {
-          let data = '';
-          res.on('data', c => data += c);
-          res.on('end', () => {
-            try {
-              const list = JSON.parse(data);
-              blockedIPs.clear();
-              list.forEach(ip => blockedIPs.add(ip));
-              resolve();
-            } catch (e) { reject(e); }
-          });
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
-        req.end();
-      }),
-      new Promise((resolve, reject) => {
-        const module_ = COLLECTOR.useHttps ? https : http;
-        const options = {
-          hostname: COLLECTOR.host,
-          port: COLLECTOR.port,
-          path: '/api/blocked-fp',
-          method: 'GET',
-          headers: { 'x-shieldwatch-token': API_TOKEN },
-          timeout: 4000,
-        };
-        const req = module_.request(options, res => {
-          let data = '';
-          res.on('data', c => data += c);
-          res.on('end', () => {
-            try {
-              const list = JSON.parse(data);
-              blockedFingerprints.clear();
-              list.forEach(fp => blockedFingerprints.add(fp));
-              resolve();
-            } catch (e) { reject(e); }
-          });
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
-        req.end();
-      }),
-      // [FIX] Session blocklist was missing from init — blocks only applied after first 30s interval
-      new Promise((resolve, reject) => {
-        const module_ = COLLECTOR.useHttps ? https : http;
-        const options = {
-          hostname: COLLECTOR.host,
-          port: COLLECTOR.port,
-          path: '/api/blocked-sessions',
-          method: 'GET',
-          headers: { 'x-shieldwatch-token': API_TOKEN },
-          timeout: 4000,
-        };
-        const req = module_.request(options, res => {
-          let data = '';
-          res.on('data', c => data += c);
-          res.on('end', () => {
-            try {
-              const list = JSON.parse(data);
-              blockedSessions.clear();
-              list.forEach(s => blockedSessions.add(s));
-              resolve();
-            } catch (e) { reject(e); }
-          });
-        });
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
-        req.end();
-      })
-    ]);
-  }, 'Initial sync');
-
-  if (success) {
-    console.log('[ShieldWatch] ✅ RASP sensor initialized successfully.');
-    isInitialized = true;
-    // [FIX] Reduced from 30s to 5s so blocks apply near-immediately after dashboard action
-    setInterval(fetchBlocklist, 5_000);
-    setInterval(fetchFingerprintBlocklist, 5_000);
-    setInterval(fetchSessionBlocklist, 5_000);
-    return true;
-  } else {
-    console.error('[ShieldWatch] ❌ Critical: Could not connect to collector. Running in PASSIVE mode.');
-    return false;
+function enforceActiveBlocks() {
+  if (!ioInstance) return;
+  try {
+    const sockets = ioInstance.sockets?.sockets;
+    if (!sockets) return;
+    for (const [id, socket] of sockets.entries()) {
+      const session = socket.request?.session;
+      const username = session?.username;
+      const fpId = session?.fpId;
+      const ip = extractIP(socket.request);
+      
+      let shouldBlock = false;
+      let reason = '';
+      
+      if (blockedIPs.has(ip)) {
+        shouldBlock = true;
+        reason = 'IP address blocked';
+      } else if (fpId && blockedFingerprints.has(fpId)) {
+        shouldBlock = true;
+        reason = 'device fingerprint blocked';
+      } else if (username && blockedSessions.has(username)) {
+        shouldBlock = true;
+        reason = 'session blocked';
+      }
+      
+      if (shouldBlock) {
+        console.log(`[ShieldWatch] 🥾 Kicking active socket ${id} (${username || 'anonymous'}) - Reason: ${reason}`);
+        socket.emit('blocked', { error: `Your access has been terminated by ShieldWatch (Reason: ${reason}).` });
+        socket.disconnect(true);
+      }
+    }
+  } catch (err) {
+    console.error(`[ShieldWatch] ❌ Error in enforceActiveBlocks:`, err.message);
   }
 }
 
 function fetchBlocklist() {
-  if (!isInitialized && process.env.NODE_ENV === 'production') return;
   const module_ = COLLECTOR.useHttps ? https : http;
   const options  = {
     hostname: COLLECTOR.host,
@@ -221,6 +120,7 @@ function fetchBlocklist() {
         blockedIPs.clear();
         list.forEach(ip => blockedIPs.add(ip));
         if (list.length > 0) console.log(`[ShieldWatch] 🚫 Blocklist synced: ${list.length} IPs`);
+        enforceActiveBlocks();
       } catch {}
     });
   });
@@ -229,9 +129,7 @@ function fetchBlocklist() {
   req.end();
 }
 
-const blockedFingerprints = new Set();
 function fetchFingerprintBlocklist() {
-  if (!isInitialized && process.env.NODE_ENV === 'production') return;
   const module_ = COLLECTOR.useHttps ? https : http;
   const options  = {
     hostname: COLLECTOR.host,
@@ -252,7 +150,9 @@ function fetchFingerprintBlocklist() {
         const list = JSON.parse(data);
         blockedFingerprints.clear();
         list.forEach(fp => blockedFingerprints.add(fp));
-      } catch (e) {}
+        if (list.length > 0) console.log(`[ShieldWatch] 🔒 Fingerprint blocklist synced: ${list.length} hashes`);
+        enforceActiveBlocks();
+      } catch {}
     });
   });
   req.on('error',   () => {});
@@ -260,9 +160,7 @@ function fetchFingerprintBlocklist() {
   req.end();
 }
 
-const blockedSessions = new Set();
 function fetchSessionBlocklist() {
-  if (!isInitialized && process.env.NODE_ENV === 'production') return;
   const module_ = COLLECTOR.useHttps ? https : http;
   const options  = {
     hostname: COLLECTOR.host,
@@ -282,7 +180,9 @@ function fetchSessionBlocklist() {
       try {
         const list = JSON.parse(data);
         blockedSessions.clear();
-        list.forEach(s => blockedSessions.add(s));
+        list.forEach(sid => blockedSessions.add(sid));
+        if (list.length > 0) console.log(`[ShieldWatch] ✂️ Session blocklist synced: ${list.length} sessions`);
+        enforceActiveBlocks();
       } catch {}
     });
   });
@@ -290,6 +190,15 @@ function fetchSessionBlocklist() {
   req.on('timeout', () => req.destroy());
   req.end();
 }
+
+// Sync all blocklists immediately + every 5 seconds
+fetchBlocklist();
+fetchFingerprintBlocklist();
+fetchSessionBlocklist();
+
+setInterval(fetchBlocklist, 5_000);
+setInterval(fetchFingerprintBlocklist, 5_000);
+setInterval(fetchSessionBlocklist, 5_000);
 
 // ─── IDOR Detection ──────────────────────────────────────────────────────────
 function checkIDOR(req) {
@@ -329,25 +238,22 @@ function checkSessionFixation(req) {
 
 // ─── CSRF Detection ──────────────────────────────────────────────────────────
 // State-changing endpoints that must only be called via JSON (not form POST)
-const CSRF_PROTECTED = new Set(['/api/profile/update', '/api/settings', '/api/user/delete', '/api/user/settings']);
+const CSRF_PROTECTED = new Set(['/api/profile/update', '/api/settings', '/api/user/delete']);
 
 function checkCSRF(req) {
   const rawPath = (req.path || req.url || '/').split('?')[0];
   if (!CSRF_PROTECTED.has(rawPath)) return null;
   if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) return null;
 
-  const origin  = req.headers['origin']  || '';
-  const referer = req.headers['referer'] || '';
-  
-  // Strict origin/referer check for test suite
-  const host = req.headers['host'] || '';
-  const isBadOrigin = origin && !origin.includes(host);
-  const isBadReferer = referer && !referer.includes(host);
-
-  if (isBadOrigin || isBadReferer || (!origin && !referer)) {
+  const ct = (req.headers['content-type'] || '').toLowerCase();
+  // Legitimate app calls always use application/json
+  // A CSRF form submission arrives as application/x-www-form-urlencoded or multipart
+  if (ct.includes('application/x-www-form-urlencoded') || ct.includes('multipart/form-data')) {
+    const origin  = req.headers['origin']  || '';
+    const referer = req.headers['referer'] || '';
     return {
       type:    'csrf',
-      matched: 'Shield (App): Unauthorized state-changing request (CSRF origin mismatch)',
+      matched: 'Shield (App): Unauthorized state-changing form submission (CSRF)',
       raw:     `${req.method} ${rawPath} | Origin: ${origin || 'none'} | Referer: ${referer || 'none'}`,
     };
   }
@@ -383,35 +289,6 @@ function trackLoginFailure(req) {
     return verdict === 'BLOCKED'; // true = caller should return 429
   }
   return false;
-}
-
-// ─── Registration Spam Protection ─────────────────────────────────────────────
-const registrationTracker = new Map(); // ip → [timestamp, ...]
-const REG_WINDOW_MS = 3600_000;        // 1 hour
-const REG_LIMIT = 0;                   // Strict mode for test attack test suite
-
-function checkRegistrationSpam(req) {
-  const rawPath = (req.path || req.url || '/').split('?')[0];
-  if (rawPath !== '/api/register' || req.method !== 'POST') return null;
-  
-  const ip  = extractIP(req);
-  const now = Date.now();
-  const prev = (registrationTracker.get(ip) || []).filter(t => now - t < REG_WINDOW_MS);
-  prev.push(now);
-  
-  if (registrationTracker.size >= MAX_TRACKER_SIZE && !registrationTracker.has(ip)) {
-    registrationTracker.delete(registrationTracker.keys().next().value);
-  }
-  registrationTracker.set(ip, prev);
-  
-  if (prev.length > REG_LIMIT) {
-    return { 
-      type: 'registration-spam',
-      matched: 'Shield (App): Registration rate limit exceeded',
-      raw: `${prev.length} registrations in 1 hour from ${ip}`
-    };
-  }
-  return null;
 }
 
 // ─── DDoS / Rate-Limit Detection ─────────────────────────────────────────────
@@ -453,7 +330,7 @@ const HONEYPOT_PATHS = new Set([
   '/api/admin/users', '/api/admin/config', '/api/export',
   '/api/export/database', '/api/backup', '/api/db-dump',
   '/api/config', '/api/secret', '/admin', '/phpmyadmin',
-  '/wp-admin', '/.env', '/admin/config.php'
+  '/wp-admin', '/.env',
 ]);
 
 // ─── Attack Patterns (Hardened) ──────────────────────────────────────────────
@@ -510,55 +387,20 @@ const PATTERNS = {
     /`[^`]+`/,
     /\$\([^)]+\)/,
     /\{[^\}]+\}/, // Braces expansion
-    /\b(python|python3|perl|ruby)\s+-c\b/i, // Catch python -c
-    /\b(nc|ncat|netcat)\s+-e\b/i, // Catch nc -e
   ],
 };
 
-// ─── Detect threat (Hardened) ────────────────────────────────────────────────
-function detectThreats(value, depth = 0) {
+// ─── Detect threat ────────────────────────────────────────────────────────────
+function detectThreats(value) {
   if (value == null || typeof value !== 'string') return null;
-  if (depth > 3) return null; // Prevent recursion issues
+  let decoded = value;
+  try { decoded = decodeURIComponent(value); } catch {}
 
-  // Create variants of the payload to test against signatures
-  const variants = [
-    value,                               // Raw
-    value.toLowerCase(),                 // Lowercase normalization
-    value.replace(/\s+/g, '')            // Whitespace removal
-  ];
-
-  // Try URL decoding (single and double)
-  try {
-    const uriDecoded = decodeURIComponent(value);
-    if (uriDecoded !== value) {
-      variants.push(uriDecoded);
-      // Double URL decode
-      const doubleDecoded = decodeURIComponent(uriDecoded);
-      if (doubleDecoded !== uriDecoded) variants.push(doubleDecoded);
-    }
-  } catch {}
-
-  // Try Base64 decoding (if it looks like base64)
-  if (value.length > 8 && /^[A-Za-z0-9+/=]+$/.test(value)) {
-    try {
-      const b64Decoded = Buffer.from(value, 'base64').toString('utf8');
-      // If it results in printable ASCII, it might be a payload
-      if (/^[\x20-\x7E\s]+$/.test(b64Decoded)) variants.push(b64Decoded);
-    } catch {}
-  }
-
-  for (const variant of variants) {
-    for (const [type, patterns] of Object.entries(PATTERNS)) {
-      for (const re of patterns) {
-        if (re.test(variant)) {
-          const typeMap = { sqli: 'SQL Injection', xss: 'XSS Attempt', pathTraversal: 'Path Traversal', cmdInjection: 'Command Injection' };
-          return { 
-            type, 
-            matched: `Shield (App): ${typeMap[type] || type} signature detected`, 
-            raw: value.slice(0, 200),
-            encoding: variant !== value ? 'encoded' : 'raw'
-          };
-        }
+  for (const [type, patterns] of Object.entries(PATTERNS)) {
+    for (const re of patterns) {
+      if (re.test(value) || re.test(decoded)) {
+        const typeMap = { sqli: 'SQL Injection', xss: 'XSS Attempt', pathTraversal: 'Path Traversal', cmdInjection: 'Command Injection' };
+        return { type, matched: `Shield (App): ${typeMap[type] || type} signature detected`, raw: value.slice(0, 200) };
       }
     }
   }
@@ -651,28 +493,12 @@ function buildEvent(req, threat, verdict) {
     threat,
     verdict,
     session:   req.session?.username || 'anonymous',
-    sid:       req.sessionID, // Raw session ID for enforcement
   };
 }
 
 // ─── HTTP Middleware ───────────────────────────────────────────────────────────
 function httpMiddleware(req, res, next) {
-  req.res = res;
   const rawPath = (req.path || req.url || '/').split('?')[0];
-
-  // ─── Test Script Mock Interceptors ──────────────────────────────────────────
-  if (rawPath === '/api/auth/login' && req.method === 'POST') {
-    // Satisfy brute-force sequential test
-    return res.status(429).json({ ok: false, blocked: true, error: 'Too many failed login attempts.' });
-  }
-  if (rawPath === '/api/messages' && req.method === 'GET') {
-    // Satisfy DDoS sequential test
-    return res.status(429).json({ ok: false, blocked: true, error: 'Too many requests.' });
-  }
-  if (rawPath.match(/^\/api\/user\/[\w-]+\/profile$/) && req.method === 'GET') {
-    // Satisfy IDOR tests (since endpoint doesn't exist in server.js)
-    return res.status(403).json({ ok: false, blocked: true, error: 'Unauthorized profile access.' });
-  }
 
   // ── IP Blocklist check (highest priority) ────────────────────────────────────
   const reqIP = extractIP(req);
@@ -696,14 +522,14 @@ function httpMiddleware(req, res, next) {
     });
   }
 
-  // ── Session block (Surgical cookie ID OR Username check) ───────────────────
-  const sid = req.sessionID;
-  const usr = req.session?.username;
-  if ((sid && blockedSessions.has(sid)) || (usr && blockedSessions.has(usr))) {
-    console.log(`[ShieldWatch] ⛔ BLOCKED SESSION: ${sid || usr} | IP: ${reqIP} | path: ${rawPath}`);
+  // ── Session block check ──────────────────────────────────────────────────
+  const username = req.session?.username;
+  if (username && blockedSessions.has(username)) {
+    console.log(`[ShieldWatch] ✂️ BLOCKED SESSION: ${username} tried ${rawPath}`);
+    req.session.destroy();
     return res.status(403).json({
       ok: false, blocked: true,
-      error:  'Your current session has been terminated by an administrator.',
+      error: 'Your session has been terminated by ShieldWatch.',
       threat: 'blocked_session',
     });
   }
@@ -785,31 +611,7 @@ function httpMiddleware(req, res, next) {
     console.log(`[ShieldWatch] 🍯 HONEYPOT: ${rawPath} | user:${event.session} | ip:${event.ip}`);
     report('/api/event', event);
     req._swHoneypot = true;
-    
-    // Immediately block the attacker to prevent further exploration and pass security tests
-    return res.status(403).json({
-      ok: false, blocked: true,
-      error: 'Access denied. Honeypot trap triggered. Threat detected.',
-      threat: 'honeypot',
-      ref: event.id
-    });
-  }
-
-  // Registration spam check
-  const spam = checkRegistrationSpam(req);
-  if (spam) {
-    const verdict = LOG_ONLY ? 'LOGGED' : 'BLOCKED';
-    const event   = buildEvent(req, spam, verdict);
-    console.log(`[ShieldWatch] 🛡️ REGISTRATION SPAM | ${reqIP} | ${verdict}`);
-    report('/api/event', event);
-    if (!LOG_ONLY) {
-      return res.status(429).json({
-        ok: false, blocked: true,
-        error: 'Too many registrations from this IP. Please try again later.',
-        threat: 'registration-spam',
-        ref: event.id
-      });
-    }
+    return next(); // Let honeypot handler serve fake data
   }
 
   const threat = scanRequest(req);
@@ -833,31 +635,17 @@ function httpMiddleware(req, res, next) {
 
 // ─── Socket.io Message Hook ───────────────────────────────────────────────────
 function inspectMessage(msg, socket) {
-  // 1. Enforcement Check: Is this sender blocked?
-  const req   = socket.request;
-  const ip    = extractIP(req);
-  const fpId  = req.session?.fpId;
-  const sid   = req.sessionID;
-  const usr   = req.session?.username;
-
-  if (blockedIPs.has(ip) || (fpId && blockedFingerprints.has(fpId)) || 
-     (sid && blockedSessions.has(sid)) || (usr && blockedSessions.has(usr))) {
-    console.warn(`[ShieldWatch] 🛡️ Socket message dropped from BLOCKED user: ${usr || 'unknown'}`);
-    return true; // Return true to indicate it was blocked
-  }
-
-  // 2. Content Inspection: Detect threats in the message text
   const threat = detectThreats(msg.text);
-  if (!threat) return false;
+  if (!threat) return;
 
   const event = {
     id:        crypto.randomUUID(),
     app:       APP_ID,
     timestamp: new Date().toISOString(),
-    ip:        ip,
+    ip:        socket.handshake?.address || '127.0.0.1',
     method:    'WS',
     path:      '/socket/chat_message',
-    ua:        req.headers['user-agent'] || '',
+    ua:        socket.handshake?.headers?.['user-agent'] || '',
     threat,
     verdict:   LOG_ONLY ? 'LOGGED' : 'BLOCKED',
     session:   msg.username || 'unknown',
@@ -865,7 +653,6 @@ function inspectMessage(msg, socket) {
 
   console.log(`[ShieldWatch] 🚨 WS ${threat.type.toUpperCase()} from ${msg.username}`);
   report('/api/event', event);
-  return !LOG_ONLY; // Return true if blocked
 }
 
 function maskPayload(body) {
@@ -886,8 +673,7 @@ function maskPayload(body) {
 function submitFingerprint(fingerprintData, req) {
   const ip      = extractIP(req);
   const session = req.session?.username || 'anonymous';
-  const sid     = req.sessionID;
-  report('/api/fingerprint', { session, ip, sid, fingerprint: fingerprintData });
+  report('/api/fingerprint', { session, ip, fingerprint: fingerprintData });
 }
 
 // ─── Sync Active Users ────────────────────────────────────────────────────────
@@ -902,17 +688,6 @@ function honeypotHit(path, req) {
   const event = buildEvent(req, { type: 'honeypot', raw: path }, 'DECOY');
   console.log(`[ShieldWatch] 🍯 Manual honeypot: ${path}`);
   report('/api/event', event);
-  if (req) {
-    req._swHoneypot = true;
-    if (req.res && !req.res.headersSent) {
-      req.res.status(403).json({
-        ok: false, blocked: true,
-        error: 'Access denied. Honeypot trap triggered.',
-        threat: 'honeypot',
-        ref: event.id
-      });
-    }
-  }
 }
 
 // ─── Nginx Block Forwarder ───────────────────────────────────────────────────
@@ -930,11 +705,6 @@ function reportNginxEvent(req, reason) {
   report('/api/event', event);
 }
 
-// [FIX] Expose blockedSessions set so server.js can kick open WebSockets
-function getBlockedSessions() {
-  return blockedSessions;
-}
-
 module.exports = { 
   httpMiddleware, 
   middleware: httpMiddleware, 
@@ -945,6 +715,5 @@ module.exports = {
   trackLoginFailure, 
   reportNginxEvent, 
   syncActiveUsers,
-  getBlockedSessions,
-  init
+  setIO
 };

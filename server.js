@@ -14,10 +14,10 @@ const path           = require('path');
 const fs             = require('fs');
 const cors           = require('cors');
 const helmet         = require('helmet');
-const bcrypt         = require('bcryptjs');
+const bcrypt         = require('bcrypt');
 const crypto         = require('crypto');
 const { exec }       = require('child_process');
-const { initDB, getDB, getPrepare, execVulnerable, logAudit } = require('./database');
+const { initDB, getDB, getPrepare, execVulnerable } = require('./database');
 
 const app    = express();
 const server = http.createServer(app);
@@ -27,14 +27,7 @@ const io     = new Server(server, {
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 const PORT           = process.env.PORT || 3001;
-const SW_ENABLED    = process.env.SW_ENABLED === 'true';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'zynchat-dev-secret-2024';
-
-// Hardening Requirement: Only enforce secure secret if ShieldWatch is active
-if (SW_ENABLED && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'zynchat-dev-secret-2024')) {
-  console.error('[ZynChat] 🚨 SHIELDWATCH ERROR: High-security mode requires a unique SESSION_SECRET!');
-  process.exit(1);
-}
 
 // ─── Session Middleware (shared with Socket.io) ───────────────────────────────
 const sessionMiddleware = session({
@@ -50,46 +43,37 @@ const sessionMiddleware = session({
   }
 });
 
-if (SW_ENABLED) {
-  app.disable('x-powered-by');
-  app.use(helmet({ 
-    contentSecurityPolicy: {
-      directives: {
-        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-        "script-src": ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
-        "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
-        "font-src": ["'self'", "fonts.gstatic.com"],
-        "img-src": ["'self'", "data:", "https:"],
-        "connect-src": ["'self'", "ws:", "wss:"],
-      }
+app.disable('x-powered-by');
+// app.use(cors()); // REMOVED for hardening - only use specific origins if needed
+app.use(helmet({ 
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "script-src": ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+      "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+      "font-src": ["'self'", "fonts.gstatic.com"],
+      "img-src": ["'self'", "data:", "https:"],
+      "connect-src": ["'self'", "ws:", "wss:"],
     }
-  }));
-} else {
-  console.warn('[ZynChat] ⚠️  SECURITY WARNING: Running in UNPROTECTED mode (SW_ENABLED=false)');
-}
+  }
+}));
 app.use(express.json({ limit: '512kb' }));
 app.use(express.urlencoded({ extended: false, limit: '64kb' }));
-app.set('trust proxy', 1); // Allow secure cookies on Render/proxies
 app.use(sessionMiddleware);
 
 // ─── ShieldWatch RASP Sensor (optional) ───────────────────────────────────────
 let sw = null;
-async function initShieldWatch() {
-  if (process.env.SW_ENABLED === 'true') {
-    try {
-      sw = require('./shieldwatch-sensor');
-      const connected = await sw.init();
-      if (connected) {
-        app.use(sw.httpMiddleware);
-      } else {
-        console.warn('[ShieldWatch] ⚠️  Running in PASSIVE mode (Collector unreachable)');
-      }
-    } catch (e) {
-      console.warn('[ShieldWatch] ⚠️  Sensor could not be loaded:', e.message);
-    }
-  } else {
-    console.log('[ShieldWatch] ⛔ Sensor DISABLED — app is UNPROTECTED (set SW_ENABLED=true to enable)');
+if (process.env.SW_ENABLED === 'true') {
+  try {
+    sw = require('./shieldwatch-sensor');
+    app.use(sw.httpMiddleware);
+    if (sw.setIO) sw.setIO(io);
+    console.log('[ShieldWatch] ✅ RASP sensor ACTIVE — Cerebro:', process.env.SW_CEREBRO_ADDR || '127.0.0.1:50051');
+  } catch (e) {
+    console.warn('[ShieldWatch] ⚠️  Sensor not loaded:', e.message);
   }
+} else {
+  console.log('[ShieldWatch] ⛔ Sensor DISABLED — app is UNPROTECTED (set SW_ENABLED=true to enable)');
 }
 
 // ─── Static Files ─────────────────────────────────────────────────────────────
@@ -181,8 +165,6 @@ app.post('/api/login', (req, res) => {
     req.session.username = user.username;
     req.session.role     = user.role;
 
-    logAudit(user.id, 'LOGIN_SUCCESS', 'users', user.id, {}, req);
-
     res.json({
       ok: true,
       user: {
@@ -224,8 +206,6 @@ app.post('/api/register', (req, res) => {
     req.session.userId   = user.id;
     req.session.username = user.username;
     req.session.role     = user.role;
-
-    logAudit(user.id, 'REGISTER_SUCCESS', 'users', user.id, {}, req);
 
     res.json({
       ok: true,
@@ -441,7 +421,6 @@ app.post('/api/profile/update', requireAuth, (req, res) => {
   }
   const updated = prepare('SELECT id,username,role,avatar_color,bio FROM users WHERE id = ?')
     .get(req.session.userId);
-  logAudit(req.session.userId, 'PROFILE_UPDATE', 'users', req.session.userId, { bio, avatar_color, username }, req);
   res.json({ ok: true, message: '✅ Profile updated successfully.', user: updated });
 });
 
@@ -582,10 +561,8 @@ io.on('connection', (socket) => {
       created_at:   new Date().toISOString()
     };
 
-    // ShieldWatch Socket.io hook (Returns true if blocked)
-    if (sw && sw.inspectMessage && sw.inspectMessage(msg, socket)) return;
-
-    logAudit(u.userId, 'MESSAGE_SEND', 'messages', result.lastInsertRowid, { room_id: rid }, socket.request);
+    // ShieldWatch Socket.io hook
+    if (sw && sw.inspectMessage) sw.inspectMessage(msg, socket);
 
     io.to(`room:${rid}`).emit('chat_message', msg);
   });
@@ -614,26 +591,6 @@ io.on('connection', (socket) => {
     console.log(`[-] ${user.username} disconnected`);
   });
 
-  // ── [FIX] Kick socket immediately when ShieldWatch blocks this session ───────
-  // sensor httpMiddleware blocks HTTP requests, but open WebSocket stays alive.
-  // Poll every 3s; if session or sid appears in blockedSessions, force disconnect.
-  const kickInterval = setInterval(() => {
-    if (!sw) return;
-    try {
-      const blockedList = sw.getBlockedSessions ? sw.getBlockedSessions() : null;
-      if (!blockedList) return;
-      const sid = socket.request.sessionID;
-      const usr = socket.request.session?.username;
-      if ((sid && blockedList.has(sid)) || (usr && blockedList.has(usr))) {
-        console.log(`[ShieldWatch] ⛔ Kicking blocked socket: ${usr || sid}`);
-        socket.emit('force_logout', { reason: 'Your session has been blocked by an administrator.' });
-        socket.disconnect(true);
-      }
-    } catch (_) {}
-  }, 3000);
-
-  socket.on('disconnect', () => clearInterval(kickInterval));
-
   console.log(`[+] ${user.username} connected (${socket.id})`);
 });
 
@@ -659,20 +616,13 @@ function broadcastOnlineUsers() {
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-async function startServer() {
-  try {
-    await initDB();
-    await initShieldWatch();
-    
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`\n🚀 ZynChat running → http://localhost:${PORT}\n`);
-    });
-  } catch (err) {
-    console.error('[Fatal] Server startup failed:', err);
-    process.exit(1);
-  }
-}
-
-startServer();
+initDB().then(() => {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🚀 ZynChat running → http://localhost:${PORT}\n`);
+  });
+}).catch(err => {
+  console.error('[Fatal] DB init failed:', err);
+  process.exit(1);
+});
 
 module.exports = { app, server };
