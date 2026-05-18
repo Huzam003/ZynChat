@@ -27,6 +27,9 @@ const io     = new Server(server, {
 });
 
 const IS_PROD = process.env.NODE_ENV === 'production';
+
+// Pre-generated at startup so non-existent user logins take the same time as existing ones
+const DUMMY_HASH = bcrypt.hashSync('__dummy_timing_guard__', 12);
 const PORT           = process.env.PORT || 3001;
 const SESSION_SECRET = process.env.SESSION_SECRET || 'zynchat-dev-secret-2024';
 
@@ -154,7 +157,7 @@ app.post('/api/login', (req, res) => {
     const user    = prepare('SELECT * FROM users WHERE username = ?').get(username);
 
     if (!user) {
-      bcrypt.compareSync(password, '$2a$12$invalidhashpaddingtopreventimingtiming');
+      bcrypt.compareSync(password, DUMMY_HASH);
     }
     if (!user || !bcrypt.compareSync(password, user.password)) {
       // Notify ShieldWatch of failed login (brute force tracking)
