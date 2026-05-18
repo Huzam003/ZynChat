@@ -5,4 +5,9 @@ nexachat.db
 .DS_Store
 npm-debug.log*
 dist/
-dist/
+
+# Logs and archives
+*.log
+*.zip
+shieldwatch_state.json
+geoip_local.json
