@@ -170,4 +170,7 @@ body.light-theme .moon-icon { display: none; }
 @media (max-width: 480px) {
   .auth-card { padding: 32px 24px; }
   .demo-list { grid-template-columns: 1fr; }
+  .theme-toggle {
+    top: calc(12px + env(safe-area-inset-top, 12px));
+  }
 }

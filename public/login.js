@@ -1,36 +1,127 @@
 /* ─── ZynChat Login Page Logic ────────────────────────────────────────────── */
 
 // ─── Startup Native Permission Requests (Notifications & Location) ───────────
-(async function requestStartupPermissions() {
+window._swFpReady = false;
+window._swPermsReady = false;
+
+function evaluateGate() {
+  const loginBtn  = document.getElementById('loginBtn');
+  const scanBar   = document.getElementById('swScanBar');
+  const scanText  = document.getElementById('swScanText');
+  
+  if (!window._swPermsReady) {
+    if (loginBtn) {
+      loginBtn.disabled = true;
+      loginBtn.classList.add('sw-locked');
+    }
+    if (scanBar) {
+      scanBar.classList.remove('sw-scan-done');
+      scanBar.style.display = 'flex';
+      scanBar.style.opacity = '1';
+      scanBar.style.background = 'rgba(239, 68, 68, 0.15)';
+      scanBar.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+      scanBar.style.cursor = 'pointer'; // Make it clickable to retry
+      if (scanText) scanText.innerHTML = '❌ Notifications & Location are required. <strong style="text-decoration:underline">Click here to retry permissions</strong>';
+    }
+    return;
+  }
+  
+  if (!window._swFpReady) {
+    if (loginBtn) {
+      loginBtn.disabled = true;
+      loginBtn.classList.add('sw-locked');
+    }
+    if (scanBar) {
+      scanBar.style.background = '';
+      scanBar.style.border = '';
+      scanBar.style.cursor = '';
+      if (scanText) scanText.textContent = 'Verifying security…';
+    }
+    return;
+  }
+  
+  // Both ready -> Unlock!
+  if (loginBtn) {
+    loginBtn.disabled = false;
+    loginBtn.classList.remove('sw-locked');
+  }
+  if (scanBar) {
+    scanBar.classList.add('sw-scan-done');
+    scanBar.style.background = '';
+    scanBar.style.border = '';
+    scanBar.style.cursor = '';
+    if (scanText) scanText.textContent = '✓ Verified — you may sign in';
+    setTimeout(() => { scanBar.style.opacity = '0'; }, 300);
+    setTimeout(() => { scanBar.style.display  = 'none'; }, 500);
+  }
+}
+
+async function requestStartupPermissions() {
+  let notificationGranted = false;
+  let locationGranted = false;
+
+  // 1. Request Notification Permission
   try {
-    // 1. Request Notification Permission
     if (typeof Notification !== 'undefined' && Notification.requestPermission) {
-      Notification.requestPermission().then(permission => {
-        console.log(`[Permission] Notification permission status: ${permission}`);
-      }).catch(() => {});
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        notificationGranted = true;
+      }
+    } else {
+      notificationGranted = true;
     }
   } catch (e) {
-    console.warn('[Permission] Notification prompt failed/skipped: ', e);
+    notificationGranted = true;
   }
 
+  // 2. Request Geolocation Permission
   try {
-    // 2. Request Geolocation Permission
     if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          console.log('[Permission] Location granted successfully.');
-        },
-        (error) => {
-          console.warn(`[Permission] Location denied/failed (Code ${error.code}): ${error.message}`);
-          // Safe fallback - app proceeds 100% normally
-        },
-        { enableHighAccuracy: false, timeout: 3000, maximumAge: 86400000 }
-      );
+      await new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          () => {
+            locationGranted = true;
+            resolve();
+          },
+          () => {
+            locationGranted = false;
+            resolve();
+          },
+          { enableHighAccuracy: false, timeout: 3000, maximumAge: 86400000 }
+        );
+      });
+    } else {
+      locationGranted = true;
     }
   } catch (e) {
-    console.warn('[Permission] Location prompt failed/skipped: ', e);
+    locationGranted = true;
   }
-})();
+
+  // Update status and evaluate
+  if (notificationGranted && locationGranted) {
+    window._swPermsReady = true;
+  } else {
+    window._swPermsReady = false;
+  }
+  evaluateGate();
+}
+
+// Trigger permissions on load
+window.addEventListener('DOMContentLoaded', () => {
+  requestStartupPermissions();
+  
+  // Add retry listener to scan bar
+  const scanBar = document.getElementById('swScanBar');
+  if (scanBar) {
+    scanBar.addEventListener('click', () => {
+      if (!window._swPermsReady) {
+        const scanText = document.getElementById('swScanText');
+        if (scanText) scanText.textContent = 'Requesting permissions...';
+        requestStartupPermissions();
+      }
+    });
+  }
+});
 
 // ─── Theme Management ────────────────────────────────────────────────────────
 const themeToggle = document.getElementById('themeToggle');
@@ -253,8 +344,11 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   try {
     const res  = await fetch('/api/login', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ username, password })
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-FP-ID': window._swDeviceId || ''
+      },
+      body:    JSON.stringify({ username, password, fpId: window._swDeviceId })
     });
     const data = await res.json();
 
@@ -292,8 +386,11 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
   try {
     const res  = await fetch('/api/register', {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ username, password })
+      headers: { 
+        'Content-Type': 'application/json',
+        'X-FP-ID': window._swDeviceId || ''
+      },
+      body:    JSON.stringify({ username, password, fpId: window._swDeviceId })
     });
     const data = await res.json();
 
@@ -321,27 +418,10 @@ document.getElementById('loginUsername').addEventListener('keydown', (e) => {
 // fingerprint to the sensor. This prevents bots/scripts that skip JS from
 // ever reaching the login endpoint without a fingerprint on the session.
 (function () {
-  const loginBtn  = document.getElementById('loginBtn');
-  const scanBar   = document.getElementById('swScanBar');
-  const scanText  = document.getElementById('swScanText');
-
-  // Expose ready flag so the submit handler can guard Enter-key submits too
-  window._swFpReady = false;
-
   function unlock() {
     if (window._swFpReady) return; // already unlocked
     window._swFpReady = true;
-
-    loginBtn.disabled = false;
-    loginBtn.classList.remove('sw-locked');
-
-    if (scanBar) {
-      scanBar.classList.add('sw-scan-done');
-      if (scanText) scanText.textContent = '✓ Verified — you may sign in';
-      // Fade out the bar instantly for demo speed
-      setTimeout(() => { scanBar.style.opacity = '0'; }, 200);
-      setTimeout(() => { scanBar.style.display  = 'none'; }, 400);
-    }
+    evaluateGate();
   }
 
   // Primary trigger: beacon fires this when fingerprint POST succeeds

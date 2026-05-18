@@ -109,6 +109,7 @@
         h  = Math.imul(h, 0x01000193) >>> 0;
       }
       fp.deviceId  = h.toString(16).padStart(8, '0');
+      window._swDeviceId = fp.deviceId;
       fp.deviceRaw = raw; // human-readable for dashboard display
     })();
 
