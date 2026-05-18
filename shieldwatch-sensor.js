@@ -54,6 +54,7 @@ const COLLECTOR = parseAddr(RAW_ADDR);
 const blockedIPs = new Set();
 const blockedFingerprints = new Set();
 const blockedSessions = new Set();
+const blockedServerFPs = new Set(); // Server-side HTTP fingerprint blocks (catches terminal attacks)
 
 let ioInstance = null;
 function setIO(io) {
@@ -191,14 +192,81 @@ function fetchSessionBlocklist() {
   req.end();
 }
 
+function fetchServerFPBlocklist() {
+  const module_ = COLLECTOR.useHttps ? https : http;
+  const options  = {
+    hostname: COLLECTOR.host,
+    port:     COLLECTOR.port,
+    path:     '/api/blocked-sfp',
+    method:   'GET',
+    headers:  {
+      'ngrok-skip-browser-warning': 'true',
+      'x-shieldwatch-token': API_TOKEN
+    },
+    timeout:  4000,
+  };
+  const req = module_.request(options, res => {
+    let data = '';
+    res.on('data', c => data += c);
+    res.on('end', () => {
+      try {
+        const list = JSON.parse(data);
+        blockedServerFPs.clear();
+        list.forEach(fp => blockedServerFPs.add(fp));
+        if (list.length > 0) console.log(`[ShieldWatch] 🖥️ Server fingerprint blocklist synced: ${list.length}`);
+      } catch {}
+    });
+  });
+  req.on('error',   () => {});
+  req.on('timeout', () => req.destroy());
+  req.end();
+}
+
+function computeServerFingerprint(req) {
+  const headerNames = [];
+  for (let i = 0; i < req.rawHeaders.length; i += 2) {
+    headerNames.push(req.rawHeaders[i].toLowerCase());
+  }
+  const headerOrder = headerNames.join(',');
+
+  const hasBrowserSignals = !!(
+    req.headers['sec-fetch-site'] ||
+    req.headers['sec-ch-ua'] ||
+    req.headers['accept-language']
+  );
+
+  const parts = [
+    headerOrder,
+    req.headers['accept-encoding'] || '',
+    req.headers['accept-language'] || '',
+    hasBrowserSignals ? 'browser' : 'tool',
+    req.headers['connection'] || '',
+  ];
+
+  const hash = crypto.createHash('sha256')
+    .update(parts.join('||'))
+    .digest('hex')
+    .slice(0, 16);
+
+  return {
+    sfpId: hash,
+    headerCount: headerNames.length,
+    headerOrder,
+    isBrowser: hasBrowserSignals,
+    isLikelyTool: !hasBrowserSignals && headerNames.length < 8,
+  };
+}
+
 // Sync all blocklists immediately + every 5 seconds
 fetchBlocklist();
 fetchFingerprintBlocklist();
 fetchSessionBlocklist();
+fetchServerFPBlocklist();
 
 setInterval(fetchBlocklist, 5_000);
 setInterval(fetchFingerprintBlocklist, 5_000);
 setInterval(fetchSessionBlocklist, 5_000);
+setInterval(fetchServerFPBlocklist, 5_000);
 
 // ─── IDOR Detection ──────────────────────────────────────────────────────────
 function checkIDOR(req) {
@@ -493,6 +561,7 @@ function buildEvent(req, threat, verdict) {
     threat,
     verdict,
     session:   req.session?.username || 'anonymous',
+    sfp:       req._sfp || null,
   };
 }
 
@@ -532,6 +601,30 @@ function httpMiddleware(req, res, next) {
       error: 'Your session has been terminated by ShieldWatch.',
       threat: 'blocked_session',
     });
+  }
+
+  // ── Server-Side HTTP Fingerprint (catches terminal/script attacks) ──────
+  const sfp = computeServerFingerprint(req);
+  req._sfp = sfp;
+
+  if (blockedServerFPs.has(sfp.sfpId)) {
+    console.log(`[ShieldWatch] 🖥️ BLOCKED SERVER-FP: ${sfp.sfpId} | headers: ${sfp.headerCount} | IP: ${reqIP}`);
+    return res.status(403).json({
+      ok: false, blocked: true,
+      error:  'Your client tool has been permanently blocked by ShieldWatch.',
+      threat: 'blocked_server_fp',
+    });
+  }
+
+  // ── Flag non-browser clients hitting API endpoints ─────────────────────
+  if (sfp.isLikelyTool && rawPath.startsWith('/api/') && rawPath !== '/api/sw/fingerprint') {
+    const event = buildEvent(req, {
+      type:    'bot',
+      matched: 'Shield (App): Non-browser client detected (terminal/script)',
+      raw:     `Headers: ${sfp.headerCount} | ${sfp.headerOrder.slice(0, 120)}`,
+    }, LOG_ONLY ? 'LOGGED' : 'FLAGGED');
+    event.sfp = sfp;
+    report('/api/event', event);
   }
 
   // IDOR check

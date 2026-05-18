@@ -83,6 +83,7 @@ const geoCache  = new Map();    // ip → geo data
 const blockedIPs          = new Set();
 const blockedFingerprints = new Set();
 const blockedSessions     = new Set(); // [NEW] For surgical session blocking
+const blockedServerFPs    = new Set(); // Server-side HTTP fingerprint blocks (catches terminal attacks)
 const fingerprintIndex    = new Map();
 
 const sessionMiddleware = session({
@@ -301,6 +302,14 @@ app.post('/api/event', requireApiToken, async (req, res) => {
 
   if (evt.verdict === 'DECOY' || tType === 'honeypot') profile.inHoneypot = true;
 
+  // Store server-side HTTP fingerprint on the profile (for terminal attack tracking)
+  if (evt.sfp && evt.sfp.sfpId) {
+    profile.sfpId       = evt.sfp.sfpId;
+    profile.sfpBrowser  = evt.sfp.isBrowser;
+    profile.sfpHeaders  = evt.sfp.headerCount;
+    profile.isToolAttack = evt.sfp.isLikelyTool;
+  }
+
   profile.threatScore = calcThreatScore(profile);
   profile.threat      = threatLevel(profile.threatScore);
 
@@ -428,6 +437,7 @@ app.post('/api/active-users', requireApiToken, (req, res) => {
 app.get('/api/blocked',          requireApiOrAdmin, (req, res) => res.json(Array.from(blockedIPs)));
 app.get('/api/blocked-fp',       requireApiOrAdmin, (req, res) => res.json(Array.from(blockedFingerprints)));
 app.get('/api/blocked-sessions', requireApiOrAdmin, (req, res) => res.json(Array.from(blockedSessions)));
+app.get('/api/blocked-sfp',      requireApiOrAdmin, (req, res) => res.json(Array.from(blockedServerFPs)));
 
 // 2. Protected Routes (Admin Dashboard)
 app.use(requireAdmin);
@@ -453,6 +463,7 @@ function saveState() {
       blockedIPs:          Array.from(blockedIPs),
       blockedFingerprints: Array.from(blockedFingerprints),
       blockedSessions:     Array.from(blockedSessions),
+      blockedServerFPs:    Array.from(blockedServerFPs),
       fingerprintIndex:    Array.from(fingerprintIndex.entries())
     };
     // Safe Save: Write to .tmp then rename to prevent corruption on crash
@@ -486,6 +497,7 @@ function loadState() {
     if (data.blockedIPs)          data.blockedIPs.forEach(ip => blockedIPs.add(ip));
     if (data.blockedFingerprints) data.blockedFingerprints.forEach(fp => blockedFingerprints.add(fp));
     if (data.blockedSessions)     data.blockedSessions.forEach(sid => blockedSessions.add(sid));
+    if (data.blockedServerFPs)    data.blockedServerFPs.forEach(sfp => blockedServerFPs.add(sfp));
     if (data.fingerprintIndex)    data.fingerprintIndex.forEach(([k, v]) => fingerprintIndex.set(k, v));
 
     console.log(`[State] 📂 Restored ${attackers.size} profiles and ${events.length} events`);
@@ -655,6 +667,23 @@ app.post('/api/unblock-session', (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/block-sfp', (req, res) => {
+  const { sfpId } = req.body;
+  if (!sfpId) return res.json({ ok: false });
+  blockedServerFPs.add(sfpId);
+  saveState();
+  io.emit('blocked_sfp_update', Array.from(blockedServerFPs));
+  res.json({ ok: true });
+});
+
+app.post('/api/unblock-sfp', (req, res) => {
+  const { sfpId } = req.body;
+  blockedServerFPs.delete(sfpId);
+  saveState();
+  io.emit('blocked_sfp_update', Array.from(blockedServerFPs));
+  res.json({ ok: true });
+});
+
 app.post('/api/unblock', (req, res) => {
   const { ip } = req.body;
   blockedIPs.delete(ip);
@@ -669,6 +698,7 @@ app.post('/api/reset', (req, res) => {
   blockedIPs.clear();
   blockedFingerprints.clear();
   blockedSessions.clear();
+  blockedServerFPs.clear();
   globalStats = { total:0, blocked:0, decoys:0, logged:0, byType:{} };
   saveState();
   io.emit('reset');
@@ -685,7 +715,8 @@ io.on('connection', (socket) => {
     attackers: Array.from(attackers.values()),
     blocked:   Array.from(blockedIPs),
     blockedFPs: Array.from(blockedFingerprints),
-    blockedSessions: Array.from(blockedSessions)
+    blockedSessions: Array.from(blockedSessions),
+    blockedServerFPs: Array.from(blockedServerFPs)
   });
 
   socket.on('disconnect', () => {

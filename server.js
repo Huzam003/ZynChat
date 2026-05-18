@@ -14,7 +14,7 @@ const path           = require('path');
 const fs             = require('fs');
 const cors           = require('cors');
 const helmet         = require('helmet');
-const bcrypt         = require('bcrypt');
+const bcrypt         = require('bcryptjs');
 const crypto         = require('crypto');
 const { exec }       = require('child_process');
 const { initDB, getDB, getPrepare, execVulnerable } = require('./database');
@@ -134,6 +134,10 @@ app.post('/api/login', (req, res) => {
   // ─── ShieldWatch Fingerprint Gate ───────────────────────────────────────────
   // Block login until the browser fingerprint has been collected by the sensor.
   // This prevents automated scripts and bots that skip the JS fingerprint beacon.
+  const clientFp = req.session?.fpId || req.body?.fpId || req.headers['x-fp-id'];
+  if (clientFp && req.session) {
+    req.session.fpId = clientFp;
+  }
   if (sw && !req.session.fpId) {
     return res.status(403).json({
       ok:    false,

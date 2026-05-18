@@ -182,11 +182,9 @@
 
       <!-- Identity -->
       <div class="profile-section">
-        <div class="profile-section-title">Identity</div>
-        <div class="profile-row"><span class="pr-lbl">Session</span><span class="pr-val mono" id="pSession">—</span></div>
-        <div class="profile-row"><span class="pr-lbl">IP Address</span><span class="pr-val mono" id="pIP">—</span></div>
         <div class="profile-row"><span class="pr-lbl">Status</span><span class="pr-val" id="pHoneypot">—</span></div>
         <div class="profile-row"><span class="pr-lbl">Mac Device ID</span><span class="pr-val mono" id="pFPID" style="color:#a855f7;font-size:10px">—</span></div>
+        <div class="profile-row"><span class="pr-lbl">HTTP Fingerprint</span><span class="pr-val mono" id="pSFP" style="color:#06b6d4;font-size:10px">—</span></div>
       </div>
 
       <!-- Location -->
@@ -227,7 +225,7 @@
       <!-- Block Actions (Surgical Only) -->
       <div style="padding: 0 16px 8px; display:flex; flex-direction:column; gap:8px;">
         <div style="display:flex; gap:8px;">
-          <button class="block-ip-btn" id="blockSessionBtn" onclick="blockCurrentSession()" style="flex:1; background:rgba(234,179,8,0.15); color:#eab308; border-color:rgba(234179,8,0.35)">
+          <button class="block-ip-btn" id="blockSessionBtn" onclick="blockCurrentSession()" style="flex:1; background:rgba(234,179,8,0.15); color:#eab308; border-color:rgba(234,179,8,0.35)">
             ✂️ Kill Session (Kick)
           </button>
           <button class="unblock-ip-btn" id="unblockSessionBtn" onclick="unblockCurrentSession()" style="display:none; flex:1">
@@ -241,6 +239,15 @@
           </button>
           <button class="unblock-ip-btn" id="unblockFPBtn" onclick="unblockCurrentFP()" style="display:none; flex:1">
             ✅ Unban Device
+          </button>
+        </div>
+
+        <div style="display:flex; gap:8px;">
+          <button class="block-ip-btn" id="blockSFPBtn" onclick="blockCurrentSFP()" style="flex:1; background:rgba(6,182,212,0.15);color:#06b6d4;border-color:rgba(6,182,212,0.35)">
+            🛡️ Block Tool (Script)
+          </button>
+          <button class="unblock-ip-btn" id="unblockSFPBtn" onclick="unblockCurrentSFP()" style="display:none; flex:1">
+            ✅ Unblock Tool
           </button>
         </div>
       </div>

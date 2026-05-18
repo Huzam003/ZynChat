@@ -8,6 +8,7 @@ let selectedSession = null;
 let blockedIPSet    = new Set();
 let blockedFPSet    = new Set();
 let blockedSessionSet = new Set(); // [NEW] Surgical session blocks
+let blockedSFPSet     = new Set(); // Server-side HTTP fingerprint blocks
 let threatChart     = null;
 const timelineBuckets = new Array(120).fill(0); // 120 seconds = 2 mins
 
@@ -30,11 +31,12 @@ socket.on('connect_error', (err) => {
   }
 });
 
-socket.on('init', ({ events, attackers, blocked = [], blockedFPs = [], blockedSessions = [] }) => {
+socket.on('init', ({ events, attackers, blocked = [], blockedFPs = [], blockedSessions = [], blockedServerFPs = [] }) => {
   allAttackers      = attackers;
   blockedIPSet      = new Set(blocked);
   blockedFPSet      = new Set(blockedFPs);
   blockedSessionSet = new Set(blockedSessions);
+  blockedSFPSet     = new Set(blockedServerFPs);
   events.slice().reverse().forEach(e => prependFeedItem(e, false));
   renderLeft(attackers);
   renderBlockedList();
@@ -58,6 +60,15 @@ socket.on('blocked_fp_update', (list) => {
     const a = allAttackers.find(x => x.session === selectedSession);
     if (a) updateBlockBtn(a);
   }
+});
+
+socket.on('blocked_sfp_update', (list) => {
+  blockedSFPSet = new Set(list);
+  if (selectedSession) {
+    const a = allAttackers.find(x => x.session === selectedSession);
+    if (a) updateBlockBtn(a);
+  }
+  renderBlockedList();
 });
 
 socket.on('new_event', (evt) => {
@@ -365,6 +376,12 @@ function renderProfile(a) {
     }
   }
 
+  // HTTP Fingerprint (SFP)
+  const sfpEl = $('pSFP');
+  if (sfpEl) {
+    sfpEl.textContent = a.sfpId || '—';
+  }
+
   // ── Geo (Smart fallback for mobile) ──
   const geo = a.geo || {};
   $('pCountry').textContent = geo.country_name ? `${getFlagEmoji(geo.country_code)} ${geo.country_name}` : '🌐 Unknown Location';
@@ -507,17 +524,65 @@ async function unblockCurrentFP() {
 }
 
 
+async function blockCurrentSFP() {
+  const a = allAttackers.find(x => x.session === selectedSession);
+  if (!a || !a.sfpId) {
+    showToast("⚠️ Tool Fingerprint missing (waiting for request)", "orange");
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/block-sfp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sfpId: a.sfpId })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      blockedSFPSet.add(a.sfpId);
+      updateBlockBtn(a);
+      fetchStats();
+      showToast(`🛡️ Tool Fingerprint blocked!`, 'red');
+    }
+  } catch (e) { console.error(e); }
+}
+
+async function unblockCurrentSFP() {
+  const a = allAttackers.find(x => x.session === selectedSession);
+  if (!a || !a.sfpId) return;
+
+  try {
+    const res = await fetch('/api/unblock-sfp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sfpId: a.sfpId })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      blockedSFPSet.delete(a.sfpId);
+      updateBlockBtn(a);
+      fetchStats();
+      showToast(`✅ Tool Fingerprint restored`, 'green');
+    }
+  } catch (e) { console.error(e); }
+}
+
+
 function updateBlockBtn(a) {
   const bS = $('blockSessionBtn');
   const uS = $('unblockSessionBtn');
   const bF = $('blockFPBtn');
   const uF = $('unblockFPBtn');
+  const bSF = $('blockSFPBtn');
+  const uSF = $('unblockSFPBtn');
 
   const sB = blockedSessionSet.has(a.session);
   const fB = a.fpId && blockedFPSet.has(a.fpId);
+  const sB_SFP = a.sfpId && blockedSFPSet.has(a.sfpId);
 
   if (bS) { bS.style.display = sB ? 'none' : 'block'; uS.style.display = sB ? 'block' : 'none'; }
   if (bF) { bF.style.display = fB ? 'none' : 'block'; uF.style.display = fB ? 'block' : 'none'; }
+  if (bSF) { bSF.style.display = sB_SFP ? 'none' : 'block'; uSF.style.display = sB_SFP ? 'block' : 'none'; }
 }
 
 
@@ -526,7 +591,7 @@ function renderBlockedList() {
   const count = $('blockedCount');
   
   // Aggregate all blocks for the counter
-  const totalCount = blockedIPSet.size + blockedFPSet.size + blockedSessionSet.size;
+  const totalCount = blockedIPSet.size + blockedFPSet.size + blockedSessionSet.size + blockedSFPSet.size;
   if (count) count.textContent = totalCount;
 
   if (totalCount === 0) {
@@ -563,12 +628,41 @@ function renderBlockedList() {
       </div>`;
   });
 
+  // 4. Server-Side HTTP Fingerprints (SFP/Tool)
+  blockedSFPSet.forEach(sfp => {
+    html += `
+      <div class="blocked-ip-row">
+        <span class="blocked-ip-addr"><span class="badge badge-cyan" style="background:rgba(6,182,212,0.15);color:#06b6d4;border:1px solid rgba(6,182,212,0.3)">TOOL</span> 🚫 ${escHtml(sfp)}</span>
+        <button class="unblock-btn" onclick="unblockServerFP('${escHtml(sfp)}')">Unblock</button>
+      </div>`;
+  });
+
   el.innerHTML = html;
 }
 
-// Helper to find attacker by session/fp for UI convenience
+// Helper to find attacker by session/fp/sfp for UI convenience
 function findAttackerBySession(sid) { return allAttackers.find(a => a.session === sid); }
 function findAttackerByFP(fp) { return allAttackers.find(a => a.fpId === fp); }
+function findAttackerBySFP(sfp) { return allAttackers.find(a => a.sfpId === sfp); }
+
+async function unblockServerFP(sfpId) {
+  try {
+    const res = await fetch('/api/unblock-sfp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sfpId })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      blockedSFPSet.delete(sfpId);
+      const a = findAttackerBySFP(sfpId);
+      if (a) updateBlockBtn(a);
+      renderBlockedList();
+      fetchStats();
+      showToast(`✅ Tool Fingerprint unblocked`, 'green');
+    }
+  } catch (e) { console.error(e); }
+}
 
 async function unblockFingerprint(fpId) {
   try {
@@ -739,11 +833,15 @@ function bindButtons() {
   const uS = $('unblockSessionBtn');
   const bF = $('blockFPBtn');
   const uF = $('unblockFPBtn');
+  const bSF = $('blockSFPBtn');
+  const uSF = $('unblockSFPBtn');
 
   if (bS) bS.onclick = blockCurrentSession;
   if (uS) uS.onclick = unblockCurrentSession;
   if (bF) bF.onclick = blockCurrentFP;
   if (uF) uF.onclick = unblockCurrentFP;
+  if (bSF) bSF.onclick = blockCurrentSFP;
+  if (uSF) uSF.onclick = unblockCurrentSFP;
 }
 
 // Bind now and on load
