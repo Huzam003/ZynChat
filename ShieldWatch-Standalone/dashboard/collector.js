@@ -185,6 +185,13 @@ function requireApiToken(req, res, next) {
   res.status(401).json({ ok: false, error: 'Unauthorized: Invalid ShieldWatch Token' });
 }
 
+function requireApiOrAdmin(req, res, next) {
+  const token = req.headers['x-shieldwatch-token'] || req.headers['x-sw-api-token'] || req.query.token;
+  if (token === API_TOKEN) return next();
+  if (req.session?.isAdmin) return next();
+  res.status(401).json({ ok: false, error: 'Unauthorized' });
+}
+
 // Static files (public) — login is public, rest is protected
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 // app.use(requireAdmin); // DO NOT USE GLOBAL REDIRECT HERE - MOVED DOWN
@@ -298,6 +305,7 @@ async function getGeoInfo(ip) {
     const tid  = setTimeout(() => ctrl.abort(), 3000);
     const res  = await fetch(`https://ipapi.co/${cleanIP}/json/`, { signal: ctrl.signal });
     clearTimeout(tid);
+    if (!res.ok) throw new Error(`ipapi returned ${res.status}`);
     const data = await res.json();
     geoCache.set(cleanIP, data);
     return data;
@@ -636,11 +644,11 @@ app.get('/ping', (_req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // IP BLOCKING — dashboard-controlled blocklist
 // ─────────────────────────────────────────────────────────────────────────────
-app.get('/api/blocked', (_req, res) => {
+app.get('/api/blocked', requireApiOrAdmin, (_req, res) => {
   res.json(Array.from(blockedIPs));
 });
 
-app.get('/api/blocked-fp', (_req, res) => {
+app.get('/api/blocked-fp', requireApiOrAdmin, (_req, res) => {
   res.json(Array.from(blockedFingerprints));
 });
 

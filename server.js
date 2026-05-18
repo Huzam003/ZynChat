@@ -17,7 +17,8 @@ const helmet         = require('helmet');
 const bcrypt         = require('bcryptjs');
 const crypto         = require('crypto');
 const { exec }       = require('child_process');
-const { initDB, getDB, getPrepare, execVulnerable } = require('./database');
+const { initDB, getDB, getPrepare, saveDB, logAudit } = require('./database');
+const { sanitizeError } = require('./validation');
 
 const app    = express();
 const server = http.createServer(app);
@@ -128,7 +129,7 @@ app.get('/ping', (req, res) => {
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
-    return res.json({ ok: false, error: 'Username and password are required.' });
+    return res.status(400).json({ ok: false, error: 'Username and password are required.' });
   }
 
   // ─── ShieldWatch Fingerprint Gate ───────────────────────────────────────────
@@ -150,6 +151,9 @@ app.post('/api/login', (req, res) => {
     const prepare = getPrepare();
     const user    = prepare('SELECT * FROM users WHERE username = ?').get(username);
 
+    if (!user) {
+      bcrypt.compareSync(password, '$2a$12$invalidhashpaddingtopreventimingtiming');
+    }
     if (!user || !bcrypt.compareSync(password, user.password)) {
       // Notify ShieldWatch of failed login (brute force tracking)
       if (sw && sw.trackLoginFailure) {
@@ -165,23 +169,25 @@ app.post('/api/login', (req, res) => {
       return res.json({ ok: false, error: 'Invalid username or password.' });
     }
 
-    req.session.userId   = user.id;
-    req.session.username = user.username;
-    req.session.role     = user.role;
+    req.session.regenerate((err) => {
+      if (err) return res.status(500).json({ ok: false, error: 'Session error.' });
+      req.session.userId   = user.id;
+      req.session.username = user.username;
+      req.session.role     = user.role;
 
-    res.json({
-      ok: true,
-      user: {
-        id:           user.id,
-        username:     user.username,
-        role:         user.role,
-        avatar_color: user.avatar_color,
-        bio:          user.bio
-      }
+      res.json({
+        ok: true,
+        user: {
+          id:           user.id,
+          username:     user.username,
+          role:         user.role,
+          avatar_color: user.avatar_color,
+          bio:          user.bio
+        }
+      });
     });
   } catch (e) {
-    // Return raw DB error to caller — intentional for demo (shows SQLi worked)
-    res.json({ ok: false, error: e.message });
+    res.status(500).json({ ok: false, error: sanitizeError(e) });
   }
 });
 
@@ -189,13 +195,13 @@ app.post('/api/login', (req, res) => {
 app.post('/api/register', (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
-    return res.json({ ok: false, error: 'Username and password are required.' });
+    return res.status(400).json({ ok: false, error: 'Username and password are required.' });
   }
   if (username.length < 2 || username.length > 30) {
-    return res.json({ ok: false, error: 'Username must be 2–30 characters.' });
+    return res.status(400).json({ ok: false, error: 'Username must be 2–30 characters.' });
   }
   if (password.length < 4) {
-    return res.json({ ok: false, error: 'Password must be at least 4 characters.' });
+    return res.status(400).json({ ok: false, error: 'Password must be at least 4 characters.' });
   }
 
   const prepare = getPrepare();
@@ -216,48 +222,61 @@ app.post('/api/register', (req, res) => {
       user: { id: user.id, username: user.username, role: user.role, avatar_color: user.avatar_color, bio: '' }
     });
   } catch (e) {
-    res.json({ ok: false, error: 'Username already taken.' });
+    res.status(409).json({ ok: false, error: 'Username already taken.' });
   }
 });
 
 // ─── Logout ───────────────────────────────────────────────────────────────────
 app.post('/api/logout', (req, res) => {
   const username = req.session.username;
-  req.session.destroy();
-  
-  // Immediately broadcast that this user is gone
+
+  // Remove all sockets for this user from onlineUsers
   if (username) {
+    for (const [socketId, u] of onlineUsers) {
+      if (u.username === username) onlineUsers.delete(socketId);
+    }
     console.log(`[Logout] User ${username} logged out.`);
-    // We need to wait a tiny bit for the session to clear
-    setTimeout(() => {
-        if (typeof broadcastOnlineUsers === 'function') broadcastOnlineUsers();
-    }, 500);
   }
-  
-  res.json({ ok: true });
+
+  req.session.destroy(() => {
+    if (typeof broadcastOnlineUsers === 'function') broadcastOnlineUsers();
+    res.json({ ok: true });
+  });
 });
 
 // ─── Current User ─────────────────────────────────────────────────────────────
 app.get('/api/me', requireAuth, (req, res) => {
-  const prepare = getPrepare();
-  const user    = prepare('SELECT id, username, role, avatar_color, bio FROM users WHERE id = ?').get(req.session.userId);
-  res.json(user || {});
+  try {
+    const prepare = getPrepare();
+    const user    = prepare('SELECT id, username, role, avatar_color, bio FROM users WHERE id = ?').get(req.session.userId);
+    res.json(user || {});
+  } catch (e) {
+    res.status(500).json({ ok: false, error: sanitizeError(e) });
+  }
 });
 
 // ─── Rooms ────────────────────────────────────────────────────────────────────
 app.get('/api/rooms', requireAuth, (req, res) => {
-  const prepare = getPrepare();
-  const rooms   = prepare('SELECT * FROM rooms ORDER BY id ASC').all();
-  res.json(rooms);
+  try {
+    const prepare = getPrepare();
+    const rooms   = prepare('SELECT * FROM rooms ORDER BY id ASC').all();
+    res.json(rooms);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: sanitizeError(e) });
+  }
 });
 
 // ─── Messages ─────────────────────────────────────────────────────────────────
 app.get('/api/messages/:roomId', requireAuth, (req, res) => {
-  const prepare = getPrepare();
-  const msgs    = prepare(
-    'SELECT * FROM messages WHERE room_id = ? ORDER BY created_at ASC LIMIT 100'
-  ).all(req.params.roomId);
-  res.json(msgs);
+  try {
+    const prepare = getPrepare();
+    const msgs    = prepare(
+      'SELECT * FROM messages WHERE room_id = ? ORDER BY created_at ASC LIMIT 100'
+    ).all(req.params.roomId);
+    res.json(msgs);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: sanitizeError(e) });
+  }
 });
 
 // FIXED: XSS Protection for Search
@@ -265,13 +284,12 @@ app.get('/api/search', requireAuth, (req, res) => {
   const { q, roomId } = req.query;
   if (!q) return res.json({ ok: true, results: [], query: '' });
 
-  // Escape HTML characters to prevent XSS
-  const safeQ = q.replace(/[<>]/g, '');
+  const safeQ = q.replace(/[<>"'&]/g, '');
 
   const prepare = getPrepare();
   const results = prepare(
     'SELECT * FROM messages WHERE room_id = ? AND text LIKE ? ORDER BY created_at DESC LIMIT 20'
-  ).all(roomId || 1, `%${q}%`);
+  ).all(roomId || 1, `%${safeQ}%`);
 
   res.json({ ok: true, results, query: safeQ });
 });
@@ -542,33 +560,42 @@ io.on('connection', (socket) => {
 
   // ── Chat Message ─────────────────────────────────────────────────────────────
   socket.on('chat_message', ({ roomId, text }) => {
-    if (!text || typeof text !== 'string') return;
-    const clean = text.trim().slice(0, 2000);
-    if (!clean) return;
+    try {
+      if (!text || typeof text !== 'string') return;
+      const clean = text.trim().slice(0, 2000);
+      if (!clean) return;
 
-    const rid  = parseInt(roomId, 10);
-    const u    = onlineUsers.get(socket.id);
-    if (!u) return;
+      const rid  = parseInt(roomId, 10);
+      const u    = onlineUsers.get(socket.id);
+      if (!u) return;
 
-    const prepare2 = getPrepare();
-    const result   = prepare2(
-      'INSERT INTO messages (room_id, user_id, username, avatar_color, text) VALUES (?, ?, ?, ?, ?)'
-    ).run(rid, u.userId, u.username, u.avatar_color, clean);
+      const prepare2 = getPrepare();
+      const result   = prepare2(
+        'INSERT INTO messages (room_id, user_id, username, avatar_color, text) VALUES (?, ?, ?, ?, ?)'
+      ).run(rid, u.userId, u.username, u.avatar_color, clean);
 
-    const msg = {
-      id:           result.lastInsertRowid,
-      room_id:      rid,
-      user_id:      u.userId,
-      username:     u.username,
-      avatar_color: u.avatar_color,
-      text:         clean,
-      created_at:   new Date().toISOString()
-    };
+      const msg = {
+        id:           result.lastInsertRowid,
+        room_id:      rid,
+        user_id:      u.userId,
+        username:     u.username,
+        avatar_color: u.avatar_color,
+        text:         clean,
+        created_at:   new Date().toISOString()
+      };
 
-    // ShieldWatch Socket.io hook
-    if (sw && sw.inspectMessage) sw.inspectMessage(msg, socket);
+      if (sw && sw.inspectMessage) {
+        const blocked = sw.inspectMessage(msg, socket);
+        if (blocked) {
+          socket.emit('force_logout', { reason: 'Your message was blocked by ShieldWatch for containing a malicious payload.' });
+          return;
+        }
+      }
 
-    io.to(`room:${rid}`).emit('chat_message', msg);
+      io.to(`room:${rid}`).emit('chat_message', msg);
+    } catch (e) {
+      console.error('[Chat] Message error:', e.message);
+    }
   });
 
   // ── Typing Indicators ────────────────────────────────────────────────────────

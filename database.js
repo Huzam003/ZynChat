@@ -77,13 +77,6 @@ function prepare(query) {
   };
 }
 
-// ─── Raw vulnerable exec (for SQLi demo) ──────────────────────────────────────
-// Returns first row as object, or undefined. Throws on SQL error.
-function execVulnerable(rawSQL) {
-  const results = db.exec(rawSQL);
-  return rowsToObjects(results)[0];
-}
-
 // ─── Init ─────────────────────────────────────────────────────────────────────
 async function initDB() {
   const SQL = await initSqlJs();
@@ -248,4 +241,4 @@ function logAudit(userId, action, tableName, recordId, changes, req) {
 function getDB()      { return db; }
 function getPrepare() { return prepare; }
 
-module.exports = { initDB, getDB, getPrepare, execVulnerable, saveDB, logAudit };
+module.exports = { initDB, getDB, getPrepare, saveDB, logAudit };
