@@ -703,20 +703,29 @@ async function unblockSession(session) {
 }
 
 async function unblockIP(ip) {
-  await fetch('/api/unblock', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ip }),
-  });
-  showToast(`✅ ${ip} unblocked`, 'green');
+  try {
+    const res = await fetch('/api/unblock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      blockedIPSet.delete(ip);
+      renderBlockedList();
+      showToast(`✅ ${ip} unblocked`, 'green');
+    }
+  } catch (e) { console.error(e); }
 }
 
 // ─── Toast notification ───────────────────────────────────────────────────────
 function showToast(msg, color = 'red') {
   const t = document.createElement('div');
   t.className = 'sw-toast';
-  t.style.borderColor = color === 'green' ? '#10b981' : '#ef4444';
-  t.style.color       = color === 'green' ? '#10b981' : '#ef4444';
+  const colorMap = { green: '#10b981', orange: '#f97316', red: '#ef4444' };
+  const hex = colorMap[color] || '#ef4444';
+  t.style.borderColor = hex;
+  t.style.color       = hex;
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => t.classList.add('show'), 10);

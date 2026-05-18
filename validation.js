@@ -36,8 +36,8 @@ const SCHEMAS = {
     message: 'Room name must be 1-50 characters and alphanumeric.'
   },
   filename: {
-    // Prevent path traversal by disallowing .. and / or \
-    pattern: /^[^..\\/]+$/,
+    // Prevent path traversal by rejecting ".." sequences and slashes
+    pattern: /^(?!.*\.\.)[\w.\- ]+$/,
     message: 'Invalid filename. Path traversal characters are not allowed.'
   }
 };

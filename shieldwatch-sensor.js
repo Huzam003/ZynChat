@@ -86,11 +86,17 @@ function enforceActiveBlocks() {
       } else if (username && blockedSessions.has(username)) {
         shouldBlock = true;
         reason = 'session blocked';
+      } else if (blockedServerFPs.size > 0) {
+        const sfp = computeServerFingerprint(socket.request);
+        if (blockedServerFPs.has(sfp.sfpId)) {
+          shouldBlock = true;
+          reason = 'client tool fingerprint blocked';
+        }
       }
       
       if (shouldBlock) {
         console.log(`[ShieldWatch] 🥾 Kicking active socket ${id} (${username || 'anonymous'}) - Reason: ${reason}`);
-        socket.emit('blocked', { error: `Your access has been terminated by ShieldWatch (Reason: ${reason}).` });
+        socket.emit('force_logout', { reason: `Your access has been terminated by ShieldWatch (Reason: ${reason}).` });
         socket.disconnect(true);
       }
     }
@@ -118,6 +124,7 @@ function fetchBlocklist() {
     res.on('end', () => {
       try {
         const list = JSON.parse(data);
+        if (!Array.isArray(list)) return;
         blockedIPs.clear();
         list.forEach(ip => blockedIPs.add(ip));
         if (list.length > 0) console.log(`[ShieldWatch] 🚫 Blocklist synced: ${list.length} IPs`);
@@ -149,6 +156,7 @@ function fetchFingerprintBlocklist() {
     res.on('end', () => {
       try {
         const list = JSON.parse(data);
+        if (!Array.isArray(list)) return;
         blockedFingerprints.clear();
         list.forEach(fp => blockedFingerprints.add(fp));
         if (list.length > 0) console.log(`[ShieldWatch] 🔒 Fingerprint blocklist synced: ${list.length} hashes`);
@@ -180,6 +188,7 @@ function fetchSessionBlocklist() {
     res.on('end', () => {
       try {
         const list = JSON.parse(data);
+        if (!Array.isArray(list)) return;
         blockedSessions.clear();
         list.forEach(sid => blockedSessions.add(sid));
         if (list.length > 0) console.log(`[ShieldWatch] ✂️ Session blocklist synced: ${list.length} sessions`);
@@ -211,6 +220,7 @@ function fetchServerFPBlocklist() {
     res.on('end', () => {
       try {
         const list = JSON.parse(data);
+        if (!Array.isArray(list)) return;
         blockedServerFPs.clear();
         list.forEach(fp => blockedServerFPs.add(fp));
         if (list.length > 0) console.log(`[ShieldWatch] 🖥️ Server fingerprint blocklist synced: ${list.length}`);
@@ -729,7 +739,7 @@ function httpMiddleware(req, res, next) {
 // ─── Socket.io Message Hook ───────────────────────────────────────────────────
 function inspectMessage(msg, socket) {
   const threat = detectThreats(msg.text);
-  if (!threat) return;
+  if (!threat) return false;
 
   const event = {
     id:        crypto.randomUUID(),
@@ -746,6 +756,7 @@ function inspectMessage(msg, socket) {
 
   console.log(`[ShieldWatch] 🚨 WS ${threat.type.toUpperCase()} from ${msg.username}`);
   report('/api/event', event);
+  return !LOG_ONLY;
 }
 
 function maskPayload(body) {
@@ -783,6 +794,19 @@ function honeypotHit(path, req) {
   report('/api/event', event);
 }
 
+// ─── Report Threat (used by server.js for inline detections) ─────────────
+function reportThreat(req, type, details = {}) {
+  const threat = {
+    type,
+    matched: `Shield (App): ${type} detected`,
+    raw: JSON.stringify(details).slice(0, 200),
+  };
+  const verdict = LOG_ONLY ? 'LOGGED' : 'BLOCKED';
+  const event = buildEvent(req, threat, verdict);
+  console.log(`[ShieldWatch] 🚨 ${type.toUpperCase()} | ${verdict}`);
+  report('/api/event', event);
+}
+
 // ─── Nginx Block Forwarder ───────────────────────────────────────────────────
 function reportNginxEvent(req, reason) {
   const threatType = (reason === 'rate-limit') ? 'ddos' : 'bot';
@@ -798,15 +822,16 @@ function reportNginxEvent(req, reason) {
   report('/api/event', event);
 }
 
-module.exports = { 
-  httpMiddleware, 
-  middleware: httpMiddleware, 
-  inspectMessage, 
-  detectThreats, 
-  submitFingerprint, 
-  honeypotHit, 
-  trackLoginFailure, 
-  reportNginxEvent, 
+module.exports = {
+  httpMiddleware,
+  middleware: httpMiddleware,
+  inspectMessage,
+  detectThreats,
+  submitFingerprint,
+  honeypotHit,
+  reportThreat,
+  trackLoginFailure,
+  reportNginxEvent,
   syncActiveUsers,
   setIO
 };

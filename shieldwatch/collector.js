@@ -263,6 +263,12 @@ app.post('/api/auth/login', rateLimit(10, 15 * 60 * 1000), checkDashboardBruteFo
   res.status(401).json({ ok: false, error: 'Access Denied: Invalid Security Credential' });
 });
 
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.json({ ok: true });
+  });
+});
+
 // 1. Inbound API (Sensor -> Collector)
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/event  — receive threat event from NexaChat sensor
@@ -314,6 +320,7 @@ app.post('/api/event', requireApiToken, async (req, res) => {
   profile.threat      = threatLevel(profile.threatScore);
 
   // Update global stats
+  globalStats.total++;
   if (evt.verdict === 'BLOCKED') globalStats.blocked++;
   if (evt.verdict === 'DECOY')   globalStats.decoys++;
   if (evt.verdict === 'LOGGED')  globalStats.logged++;
@@ -453,7 +460,12 @@ app.get('/dashboard.css', (req, res) => res.sendFile(path.join(__dirname, 'publi
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
+let _saveTimer = null;
 function saveState() {
+  if (_saveTimer) return;
+  _saveTimer = setTimeout(() => { _saveTimer = null; _saveStateNow(); }, 500);
+}
+function _saveStateNow() {
   try {
     const state = {
       globalStats,
@@ -511,7 +523,7 @@ loadState();
 
 // ─── GeoIP & UA Helpers ──────────────────────────────────────────────────────
 async function getGeoInfo(ip) {
-  if (ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.')) {
+  if (ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.') || ip.startsWith('10.') || /^172\.(1[6-9]|2\d|3[01])\./.test(ip)) {
     return { country_name: 'Local Network', country_code: 'LO', city: 'Home', org: 'Internal IP' };
   }
   if (geoCache.has(ip)) return geoCache.get(ip);
@@ -521,19 +533,26 @@ async function getGeoInfo(ip) {
     const localDbPath = path.join(__dirname, 'geoip_local.json');
     if (fs.existsSync(localDbPath)) {
       const db = JSON.parse(fs.readFileSync(localDbPath, 'utf8'));
-      if (db[ip]) {
-        geoCache.set(ip, db[ip]);
-        return db[ip];
+      const prefixKey = Object.keys(db).find(k => ip.startsWith(k));
+      const match = db[ip] || (prefixKey ? db[prefixKey] : null);
+      if (match) {
+        geoCache.set(ip, match);
+        if (geoCache.size > 10000) geoCache.delete(geoCache.keys().next().value);
+        return match;
       }
     }
 
     // Fallback to external API (ipapi.co)
     const res = await new Promise((resolve) => {
       const https = require('https');
-      https.get(`https://ipapi.co/${ip}/json/`, (res) => {
+      https.get(`https://ipapi.co/${ip}/json/`, (apiRes) => {
+        if (apiRes.statusCode !== 200) {
+          apiRes.resume();
+          return resolve({ error: true });
+        }
         let data = '';
-        res.on('data', chunk => data += chunk);
-        res.on('end', () => {
+        apiRes.on('data', chunk => data += chunk);
+        apiRes.on('end', () => {
           try {
             resolve(JSON.parse(data));
           } catch (e) {
@@ -545,6 +564,7 @@ async function getGeoInfo(ip) {
 
     if (res && !res.error) {
       geoCache.set(ip, res);
+      if (geoCache.size > 10000) geoCache.delete(geoCache.keys().next().value);
       return res;
     }
   } catch {}
@@ -600,6 +620,10 @@ function upsertProfile(sessionKey, ip, ua, geo, extra = {}) {
     }
   }
   Object.assign(p, extra);
+  if (attackers.size > 10000) {
+    const oldest = attackers.keys().next().value;
+    attackers.delete(oldest);
+  }
   return p;
 }
 
@@ -624,8 +648,7 @@ function threatLevel(score) {
 app.get('/api/stats', (req, res) => {
   res.json({
     ...globalStats,
-    attackers: Array.from(attackers.values()).filter(a => a.threatScore > 0).length,
-    logged:    events.length
+    attackers: Array.from(attackers.values()).filter(a => a.threatScore > 0).length
   });
 });
 
@@ -684,6 +707,15 @@ app.post('/api/unblock-sfp', (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/block', (req, res) => {
+  const { ip } = req.body;
+  if (!ip) return res.json({ ok: false });
+  blockedIPs.add(ip);
+  saveState();
+  io.emit('blocked_update', Array.from(blockedIPs));
+  res.json({ ok: true });
+});
+
 app.post('/api/unblock', (req, res) => {
   const { ip } = req.body;
   blockedIPs.delete(ip);
@@ -699,6 +731,8 @@ app.post('/api/reset', (req, res) => {
   blockedFingerprints.clear();
   blockedSessions.clear();
   blockedServerFPs.clear();
+  geoCache.clear();
+  fingerprintIndex.clear();
   globalStats = { total:0, blocked:0, decoys:0, logged:0, byType:{} };
   saveState();
   io.emit('reset');

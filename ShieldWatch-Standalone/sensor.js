@@ -123,6 +123,49 @@ function fetchFingerprintBlocklist() {
 fetchFingerprintBlocklist();
 setInterval(fetchFingerprintBlocklist, 30_000);
 
+// ─── Session Blocklist (synced from collector every 30s) ────────────────────
+const blockedSessions = new Set();
+
+function fetchSessionBlocklist() {
+  const module_ = COLLECTOR.useHttps ? https : http;
+  const options  = {
+    hostname: COLLECTOR.host,
+    port:     COLLECTOR.port,
+    path:     '/api/blocked-sessions',
+    method:   'GET',
+    headers:  {
+      'ngrok-skip-browser-warning': 'true',
+      'x-shieldwatch-token': API_TOKEN
+    },
+    timeout:  4000,
+  };
+  const req = module_.request(options, res => {
+    let data = '';
+    res.on('data', c => data += c);
+    res.on('end', () => {
+      try {
+        const list = JSON.parse(data);
+        if (!Array.isArray(list)) return;
+        blockedSessions.clear();
+        list.forEach(sid => blockedSessions.add(sid));
+        if (list.length > 0) console.log(`[ShieldWatch] ✂️ Session blocklist synced: ${list.length} sessions`);
+      } catch {}
+    });
+  });
+  req.on('error',   () => {});
+  req.on('timeout', () => req.destroy());
+  req.end();
+}
+
+fetchSessionBlocklist();
+setInterval(fetchSessionBlocklist, 30_000);
+
+let ioInstance = null;
+function setIO(io) {
+  ioInstance = io;
+  console.log('[ShieldWatch] Socket.io instance integrated in sensor');
+}
+
 // ─── IDOR Detection ──────────────────────────────────────────────────────────
 function checkIDOR(req) {
   const rawPath = (req.path || req.url || '/').split('?')[0];
@@ -436,6 +479,18 @@ function httpMiddleware(req, res, next) {
     });
   }
 
+  // ── Session block check ──────────────────────────────────────────────────
+  const username = req.session?.username;
+  if (username && blockedSessions.has(username)) {
+    console.log(`[ShieldWatch] ✂️ BLOCKED SESSION: ${username} tried ${rawPath}`);
+    req.session.destroy();
+    return res.status(403).json({
+      ok: false, blocked: true,
+      error: 'Your session has been terminated by ShieldWatch.',
+      threat: 'blocked_session',
+    });
+  }
+
   // IDOR check
   const idorThreat = checkIDOR(req);
   if (idorThreat) {
@@ -607,14 +662,15 @@ function reportNginxEvent(req, reason) {
   report('/api/event', event);
 }
 
-module.exports = { 
-  httpMiddleware, 
-  middleware: httpMiddleware, 
-  inspectMessage, 
-  detectThreats, 
-  submitFingerprint, 
-  honeypotHit, 
-  trackLoginFailure, 
-  reportNginxEvent, 
-  syncActiveUsers 
+module.exports = {
+  httpMiddleware,
+  middleware: httpMiddleware,
+  inspectMessage,
+  detectThreats,
+  submitFingerprint,
+  honeypotHit,
+  trackLoginFailure,
+  reportNginxEvent,
+  syncActiveUsers,
+  setIO
 };

@@ -63,6 +63,10 @@ socket.on('disconnect', () => {
   console.log('[Socket] Disconnected');
 });
 
+socket.on('connect_error', (err) => {
+  console.error('[Socket] Connection error:', err.message);
+});
+
 // [FIX] ShieldWatch: kick blocked users back to login instantly
 socket.on('force_logout', (data) => {
   const reason = (data && data.reason) || 'Your session has been terminated by an administrator.';
