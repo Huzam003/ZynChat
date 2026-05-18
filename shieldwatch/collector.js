@@ -218,6 +218,7 @@ app.use(selfMonitor);
 function requireAdmin(req, res, next) {
   if (req.session.isAdmin) return next();
   if (req.path === '/login' || req.path.startsWith('/api/auth')) return next();
+  if (req.path.startsWith('/api/')) return res.status(401).json({ ok: false, error: 'Unauthorized' });
   res.redirect('/login');
 }
 
