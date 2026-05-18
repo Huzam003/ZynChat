@@ -139,7 +139,9 @@ app.post('/api/login', (req, res) => {
   if (clientFp && req.session) {
     req.session.fpId = clientFp;
   }
-  if (sw && !req.session.fpId) {
+  const ua = req.headers['user-agent'] || '';
+  const isMobileApp = /android|iphone|ipad|mobile/i.test(ua);
+  if (sw && !req.session.fpId && !isMobileApp) {
     return res.status(403).json({
       ok:    false,
       code:  'FP_REQUIRED',

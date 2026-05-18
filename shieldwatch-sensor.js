@@ -263,7 +263,7 @@ function computeServerFingerprint(req) {
     headerCount: headerNames.length,
     headerOrder,
     isBrowser: hasBrowserSignals,
-    isLikelyTool: !hasBrowserSignals && headerNames.length < 8,
+    isLikelyTool: !hasBrowserSignals && headerNames.length < 8 && !/android|iphone|ipad|mobile/i.test(req.headers['user-agent'] || ''),
   };
 }
 
