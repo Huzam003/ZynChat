@@ -516,12 +516,19 @@ async function getGeoInfo(ip) {
     }
 
     // Fallback to external API (ipapi.co)
-    const res = await new Promise((resolve, reject) => {
-      http.get(`http://ipapi.co/${ip}/json/`, (res) => {
+    const res = await new Promise((resolve) => {
+      const https = require('https');
+      https.get(`https://ipapi.co/${ip}/json/`, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
-        res.on('end', () => resolve(JSON.parse(data)));
-      }).on('error', reject);
+        res.on('end', () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            resolve({ error: true });
+          }
+        });
+      }).on('error', () => resolve({ error: true }));
     });
 
     if (res && !res.error) {
