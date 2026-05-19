@@ -408,7 +408,7 @@ const HONEYPOT_PATHS = new Set([
   '/api/admin/users', '/api/admin/config', '/api/export',
   '/api/export/database', '/api/backup', '/api/db-dump',
   '/api/config', '/api/secret', '/admin', '/phpmyadmin',
-  '/wp-admin', '/.env',
+  '/wp-admin', '/.env', '/admin/config.php',
 ]);
 
 // ─── Attack Patterns (Hardened) ──────────────────────────────────────────────
@@ -744,9 +744,20 @@ function _httpMiddlewareInner(req, res, next) {
   if (HONEYPOT_PATHS.has(rawPath)) {
     const event = buildEvent(req, { type: 'honeypot', raw: rawPath }, 'DECOY');
     console.log(`[ShieldWatch] 🍯 HONEYPOT: ${rawPath} | user:${event.session} | ip:${event.ip}`);
+    
+    // Add attacker's IP to local blocked set immediately to prevent any subsequent queries
+    blockedIPs.add(reqIP);
+    
     report('/api/event', event);
-    req._swHoneypot = true;
-    return next(); // Let honeypot handler serve fake data
+    
+    // Send a 403 Forbidden with a security threat indicator in the body
+    return res.status(403).json({
+      ok: false,
+      blocked: true,
+      error: 'Security Threat Detected. Decoy honeypot path accessed: permanent IP ban triggered.',
+      threat: 'honeypot',
+      ref: event.id
+    });
   }
 
   const threat = scanRequest(req);

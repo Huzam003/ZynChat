@@ -307,7 +307,14 @@ app.post('/api/event', requireApiToken, async (req, res) => {
   profile.recentEvents.unshift(evt);
   if (profile.recentEvents.length > 20) profile.recentEvents.splice(20);
 
-  if (evt.verdict === 'DECOY' || tType === 'honeypot') profile.inHoneypot = true;
+  if (evt.verdict === 'DECOY' || tType === 'honeypot') {
+    profile.inHoneypot = true;
+    if (evt.ip) {
+      blockedIPs.add(evt.ip);
+      console.log(`[Auto-Block] ⛔ IP ${evt.ip} auto-blocked due to Honeypot trap access`);
+      io.emit('blocked_update', Array.from(blockedIPs));
+    }
+  }
 
   // Store server-side HTTP fingerprint on the profile (for terminal attack tracking)
   if (evt.sfp && evt.sfp.sfpId) {
