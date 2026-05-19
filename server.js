@@ -21,6 +21,7 @@ const { initDB, getDB, getPrepare, saveDB, logAudit } = require('./database');
 const { sanitizeError } = require('./validation');
 
 const app    = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 const io     = new Server(server, {
   cors: { origin: false } // Restricted Socket.io CORS
