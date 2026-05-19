@@ -310,8 +310,9 @@ app.post('/api/event', requireApiToken, async (req, res) => {
   if (evt.verdict === 'DECOY' || tType === 'honeypot') {
     profile.inHoneypot = true;
     if (evt.ip) {
-      blockedIPs.add(evt.ip);
-      console.log(`[Auto-Block] ⛔ IP ${evt.ip} auto-blocked due to Honeypot trap access`);
+      const cleanIP = evt.ip.replace(/^::ffff:/, '').split(':')[0].trim();
+      blockedIPs.add(cleanIP);
+      console.log(`[Auto-Block] ⛔ IP ${cleanIP} auto-blocked due to Honeypot trap access`);
       io.emit('blocked_update', Array.from(blockedIPs));
     }
   }
@@ -514,7 +515,7 @@ function loadState() {
       });
     }
 
-    if (data.blockedIPs)          data.blockedIPs.forEach(ip => blockedIPs.add(ip));
+    if (data.blockedIPs)          data.blockedIPs.forEach(ip => blockedIPs.add(ip.replace(/^::ffff:/, '').split(':')[0].trim()));
     if (data.blockedFingerprints) data.blockedFingerprints.forEach(fp => blockedFingerprints.add(fp));
     if (data.blockedSessions)     data.blockedSessions.forEach(sid => blockedSessions.add(sid));
     if (data.blockedServerFPs)    data.blockedServerFPs.forEach(sfp => blockedServerFPs.add(sfp));
@@ -718,18 +719,21 @@ app.post('/api/unblock-sfp', (req, res) => {
 app.post('/api/block', (req, res) => {
   const { ip } = req.body;
   if (!ip) return res.json({ ok: false });
-  blockedIPs.add(ip);
+  const clean = ip.replace(/^::ffff:/, '').split(':')[0].trim();
+  blockedIPs.add(clean);
   saveState();
   io.emit('blocked_update', Array.from(blockedIPs));
-  res.json({ ok: true });
+  res.json({ ok: true, blocked: clean });
 });
 
 app.post('/api/unblock', (req, res) => {
   const { ip } = req.body;
-  blockedIPs.delete(ip);
+  if (!ip) return res.json({ ok: false });
+  const clean = ip.replace(/^::ffff:/, '').split(':')[0].trim();
+  blockedIPs.delete(clean);
   saveState();
   io.emit('blocked_update', Array.from(blockedIPs));
-  res.json({ ok: true });
+  res.json({ ok: true, unblocked: clean });
 });
 
 app.post('/api/reset', (req, res) => {

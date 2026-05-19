@@ -25,7 +25,7 @@ const API_TOKEN = process.env.SW_API_TOKEN || 'sw-internal-token-xyz';
 function extractIP(req) {
   const raw = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1')
               .split(',')[0].trim();
-  return raw.replace(/^::ffff:/, '');
+  return raw.replace(/^::ffff:/, '').split(':')[0].trim();
 }
 
 const MAX_TRACKER_SIZE = 10_000;

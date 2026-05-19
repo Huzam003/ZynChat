@@ -477,8 +477,52 @@ async function unblockCurrentSession() {
   } catch (e) { console.error(e); }
 }
 
-// IP Blocking logic removed to prevent network-wide collateral.
-// Using Device and Session blocking instead.
+async function blockCurrentIP() {
+  const a = allAttackers.find(x => x.session === selectedSession);
+  if (!a || !a.ip) {
+    showToast("⚠️ IP address missing", "orange");
+    return;
+  }
+  const btn = $('blockIPBtn');
+  if (btn) btn.innerHTML = '⚡ Blocking...';
+  try {
+    const res = await fetch('/api/block', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip: a.ip })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const cleanIP = (data.blocked || a.ip).replace(/^::ffff:/, '').split(':')[0].trim();
+      blockedIPSet.add(cleanIP);
+      updateBlockBtn(a);
+      fetchStats();
+      showToast(`🚫 IP ${cleanIP} blocked!`, 'red');
+    }
+  } catch (e) { console.error(e); }
+  finally { if (btn) btn.innerHTML = '🚫 Block IP'; }
+}
+
+async function unblockCurrentIP() {
+  const a = allAttackers.find(x => x.session === selectedSession);
+  if (!a || !a.ip) return;
+  try {
+    const res = await fetch('/api/unblock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ip: a.ip })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const cleanIP = (data.unblocked || a.ip).replace(/^::ffff:/, '').split(':')[0].trim();
+      blockedIPSet.delete(cleanIP);
+      updateBlockBtn(a);
+      fetchStats();
+      showToast(`✅ IP ${cleanIP} unblocked`, 'green');
+    }
+  } catch (e) { console.error(e); }
+}
+
 
 async function blockCurrentFP() {
   const a = allAttackers.find(x => x.session === selectedSession);
@@ -569,6 +613,8 @@ async function unblockCurrentSFP() {
 
 
 function updateBlockBtn(a) {
+  const bIP = $('blockIPBtn');
+  const uIP = $('unblockIPBtn');
   const bS = $('blockSessionBtn');
   const uS = $('unblockSessionBtn');
   const bF = $('blockFPBtn');
@@ -576,10 +622,13 @@ function updateBlockBtn(a) {
   const bSF = $('blockSFPBtn');
   const uSF = $('unblockSFPBtn');
 
+  const cleanIP = a.ip ? a.ip.replace(/^::ffff:/, '').split(':')[0].trim() : '';
+  const ipB = cleanIP && blockedIPSet.has(cleanIP);
   const sB = blockedSessionSet.has(a.session);
   const fB = a.fpId && blockedFPSet.has(a.fpId);
   const sB_SFP = a.sfpId && blockedSFPSet.has(a.sfpId);
 
+  if (bIP) { bIP.style.display = ipB ? 'none' : 'block'; uIP.style.display = ipB ? 'block' : 'none'; }
   if (bS) { bS.style.display = sB ? 'none' : 'block'; uS.style.display = sB ? 'block' : 'none'; }
   if (bF) { bF.style.display = fB ? 'none' : 'block'; uF.style.display = fB ? 'block' : 'none'; }
   if (bSF) { bSF.style.display = sB_SFP ? 'none' : 'block'; uSF.style.display = sB_SFP ? 'block' : 'none'; }

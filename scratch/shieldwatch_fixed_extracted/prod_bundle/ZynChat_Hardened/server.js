@@ -1,0 +1,658 @@
+/**
+ * ZynChat — Main Server
+ * Express 4 + Socket.io 4 + SQLite (better-sqlite3)
+ * ShieldWatch RASP sensor optional via SW_ENABLED env var
+ */
+
+require('dotenv').config();
+
+const express        = require('express');
+const http           = require('http');
+const { Server }     = require('socket.io');
+const session        = require('express-session');
+const path           = require('path');
+const fs             = require('fs');
+const cors           = require('cors');
+const helmet         = require('helmet');
+const bcrypt         = require('bcryptjs');
+const crypto         = require('crypto');
+const { exec }       = require('child_process');
+const { initDB, getDB, getPrepare, execVulnerable, logAudit } = require('./database');
+
+const app    = express();
+const server = http.createServer(app);
+const io     = new Server(server, {
+  cors: { origin: false } // Restricted Socket.io CORS
+});
+
+const IS_PROD = process.env.NODE_ENV === 'production';
+const PORT           = process.env.PORT || 3001;
+const SW_ENABLED    = process.env.SW_ENABLED === 'true';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'zynchat-dev-secret-2024';
+
+// Hardening Requirement: Only enforce secure secret if ShieldWatch is active
+if (SW_ENABLED && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === 'zynchat-dev-secret-2024')) {
+  console.error('[ZynChat] 🚨 SHIELDWATCH ERROR: High-security mode requires a unique SESSION_SECRET!');
+  process.exit(1);
+}
+
+// ─── Session Middleware (shared with Socket.io) ───────────────────────────────
+const sessionMiddleware = session({
+  name:              'zyn.sid',
+  secret:            SESSION_SECRET,
+  resave:            false,
+  saveUninitialized: false,
+  cookie: { 
+    maxAge: 24 * 60 * 60 * 1000, 
+    httpOnly: true,
+    sameSite: 'strict',
+    secure: IS_PROD
+  }
+});
+
+if (SW_ENABLED) {
+  app.disable('x-powered-by');
+  app.use(helmet({ 
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "script-src": ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+        "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+        "font-src": ["'self'", "fonts.gstatic.com"],
+        "img-src": ["'self'", "data:", "https:"],
+        "connect-src": ["'self'", "ws:", "wss:"],
+      }
+    }
+  }));
+} else {
+  console.warn('[ZynChat] ⚠️  SECURITY WARNING: Running in UNPROTECTED mode (SW_ENABLED=false)');
+}
+app.use(express.json({ limit: '512kb' }));
+app.use(express.urlencoded({ extended: false, limit: '64kb' }));
+app.set('trust proxy', 1); // Allow secure cookies on Render/proxies
+app.use(sessionMiddleware);
+
+// ─── ShieldWatch RASP Sensor (optional) ───────────────────────────────────────
+let sw = null;
+async function initShieldWatch() {
+  if (process.env.SW_ENABLED === 'true') {
+    try {
+      sw = require('./shieldwatch-sensor');
+      const connected = await sw.init();
+      if (connected) {
+        app.use(sw.httpMiddleware);
+      } else {
+        console.warn('[ShieldWatch] ⚠️  Running in PASSIVE mode (Collector unreachable)');
+      }
+    } catch (e) {
+      console.warn('[ShieldWatch] ⚠️  Sensor could not be loaded:', e.message);
+    }
+  } else {
+    console.log('[ShieldWatch] ⛔ Sensor DISABLED — app is UNPROTECTED (set SW_ENABLED=true to enable)');
+  }
+}
+
+// ─── Static Files ─────────────────────────────────────────────────────────────
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ─── Auth Guard ───────────────────────────────────────────────────────────────
+function requireAuth(req, res, next) {
+  if (!req.session.userId) {
+    return res.status(401).json({ ok: false, error: 'Not authenticated' });
+  }
+  next();
+}
+
+// ─── Pages ────────────────────────────────────────────────────────────────────
+app.get('/', (req, res) => {
+  if (req.session.userId) return res.redirect('/chat');
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/chat', (req, res) => {
+  if (!req.session.userId) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'chat.html'));
+});
+
+// ─── Nginx Security Forwarder ────────────────────────────────────────────────
+app.get('/api/security/nginx-block', (req, res) => {
+  const { reason } = req.query;
+  if (sw) {
+    sw.reportNginxEvent(req, reason);
+  }
+  res.status(reason === 'rate-limit' ? 429 : 403).json({
+    ok: false,
+    blocked: true,
+    error: reason === 'rate-limit' 
+      ? 'Too many requests. Blocked by Nginx Network Shield.' 
+      : 'Access denied. Blocked by Nginx Network Shield.',
+    layer: 'network'
+  });
+});
+
+// ─── Health Check ─────────────────────────────────────────────────────────────
+app.get('/ping', (req, res) => {
+  res.json({ status: 'online', app: 'zynchat', version: '2.2.0-hardened', shieldwatch: !!sw });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⚠️  VULNERABILITY #1: SQL INJECTION
+//     Username is concatenated directly into the SQL query.
+//     Demo payload: username = admin'--  (any password)
+//     SQL becomes:  SELECT * FROM users WHERE username = 'admin'--' AND password = '...'
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.json({ ok: false, error: 'Username and password are required.' });
+  }
+
+  // ─── ShieldWatch Fingerprint Gate ───────────────────────────────────────────
+  // Block login until the browser fingerprint has been collected by the sensor.
+  // This prevents automated scripts and bots that skip the JS fingerprint beacon.
+  if (sw && !req.session.fpId) {
+    return res.status(403).json({
+      ok:    false,
+      code:  'FP_REQUIRED',
+      error: 'Security verification in progress. Please wait a moment and try again.'
+    });
+  }
+
+  try {
+    const prepare = getPrepare();
+    const user    = prepare('SELECT * FROM users WHERE username = ?').get(username);
+
+    if (!user || !bcrypt.compareSync(password, user.password)) {
+      // Notify ShieldWatch of failed login (brute force tracking)
+      if (sw && sw.trackLoginFailure) {
+        const blocked = sw.trackLoginFailure(req);
+        if (blocked) {
+          return res.status(429).json({
+            ok: false, blocked: true,
+            error: 'Too many failed login attempts. Blocked by ShieldWatch.',
+            threat: 'bruteforce',
+          });
+        }
+      }
+      return res.json({ ok: false, error: 'Invalid username or password.' });
+    }
+
+    req.session.userId   = user.id;
+    req.session.username = user.username;
+    req.session.role     = user.role;
+
+    logAudit(user.id, 'LOGIN_SUCCESS', 'users', user.id, {}, req);
+
+    res.json({
+      ok: true,
+      user: {
+        id:           user.id,
+        username:     user.username,
+        role:         user.role,
+        avatar_color: user.avatar_color,
+        bio:          user.bio
+      }
+    });
+  } catch (e) {
+    // Return raw DB error to caller — intentional for demo (shows SQLi worked)
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+// ─── Register ─────────────────────────────────────────────────────────────────
+app.post('/api/register', (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.json({ ok: false, error: 'Username and password are required.' });
+  }
+  if (username.length < 2 || username.length > 30) {
+    return res.json({ ok: false, error: 'Username must be 2–30 characters.' });
+  }
+  if (password.length < 4) {
+    return res.json({ ok: false, error: 'Password must be at least 4 characters.' });
+  }
+
+  const prepare = getPrepare();
+  const palette = ['#3b82f6','#8b5cf6','#10b981','#f59e0b','#ef4444','#ec4899','#06b6d4'];
+  const color   = palette[Math.floor(Math.random() * palette.length)];
+
+  try {
+    const hashedPassword = bcrypt.hashSync(password, 12);
+    prepare('INSERT INTO users (username, password, avatar_color) VALUES (?, ?, ?)').run(username.trim(), hashedPassword, color);
+
+    const user = prepare('SELECT * FROM users WHERE username = ?').get(username.trim());
+    req.session.userId   = user.id;
+    req.session.username = user.username;
+    req.session.role     = user.role;
+
+    logAudit(user.id, 'REGISTER_SUCCESS', 'users', user.id, {}, req);
+
+    res.json({
+      ok: true,
+      user: { id: user.id, username: user.username, role: user.role, avatar_color: user.avatar_color, bio: '' }
+    });
+  } catch (e) {
+    res.json({ ok: false, error: 'Username already taken.' });
+  }
+});
+
+// ─── Logout ───────────────────────────────────────────────────────────────────
+app.post('/api/logout', (req, res) => {
+  const username = req.session.username;
+  req.session.destroy();
+  
+  // Immediately broadcast that this user is gone
+  if (username) {
+    console.log(`[Logout] User ${username} logged out.`);
+    // We need to wait a tiny bit for the session to clear
+    setTimeout(() => {
+        if (typeof broadcastOnlineUsers === 'function') broadcastOnlineUsers();
+    }, 500);
+  }
+  
+  res.json({ ok: true });
+});
+
+// ─── Current User ─────────────────────────────────────────────────────────────
+app.get('/api/me', requireAuth, (req, res) => {
+  const prepare = getPrepare();
+  const user    = prepare('SELECT id, username, role, avatar_color, bio FROM users WHERE id = ?').get(req.session.userId);
+  res.json(user || {});
+});
+
+// ─── Rooms ────────────────────────────────────────────────────────────────────
+app.get('/api/rooms', requireAuth, (req, res) => {
+  const prepare = getPrepare();
+  const rooms   = prepare('SELECT * FROM rooms ORDER BY id ASC').all();
+  res.json(rooms);
+});
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+app.get('/api/messages/:roomId', requireAuth, (req, res) => {
+  const prepare = getPrepare();
+  const msgs    = prepare(
+    'SELECT * FROM messages WHERE room_id = ? ORDER BY created_at ASC LIMIT 100'
+  ).all(req.params.roomId);
+  res.json(msgs);
+});
+
+// FIXED: XSS Protection for Search
+app.get('/api/search', requireAuth, (req, res) => {
+  const { q, roomId } = req.query;
+  if (!q) return res.json({ ok: true, results: [], query: '' });
+
+  // Escape HTML characters to prevent XSS
+  const safeQ = q.replace(/[<>]/g, '');
+
+  const prepare = getPrepare();
+  const results = prepare(
+    'SELECT * FROM messages WHERE room_id = ? AND text LIKE ? ORDER BY created_at DESC LIMIT 20'
+  ).all(roomId || 1, `%${q}%`);
+
+  res.json({ ok: true, results, query: safeQ });
+});
+
+// ─── Files List ───────────────────────────────────────────────────────────────
+app.get('/api/files', requireAuth, (req, res) => {
+  const dir = path.join(__dirname, 'uploads');
+  try {
+    const files = fs.readdirSync(dir).filter(f => !f.startsWith('.'));
+    res.json(files);
+  } catch (e) {
+    res.json([]);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⚠️  VULNERABILITY #3: PATH TRAVERSAL
+//     `req.query.path` is joined to the uploads dir WITHOUT sanitisation.
+//     Demo payload: path=../private/db_config.txt
+//     Escapes uploads/ and reads the private config file.
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/api/file', requireAuth, (req, res) => {
+  const filePath = req.query.path;
+  if (!filePath) return res.json({ ok: false, error: 'No path specified.' });
+
+  // FIXED: Path Traversal Protection
+  // 1. Normalize the path
+  // 2. Resolve it relative to the uploads directory
+  // 3. Ensure the resolved path is still within the uploads directory
+  const uploadsDir = path.join(__dirname, 'uploads');
+  const fullPath   = path.resolve(uploadsDir, filePath);
+
+  if (!fullPath.startsWith(uploadsDir)) {
+    if (sw) sw.reportThreat(req, 'path_traversal', { path: filePath });
+    return res.status(403).json({ ok: false, error: 'Access denied: Security violation.' });
+  }
+
+  try {
+    const content = fs.readFileSync(fullPath, 'utf8');
+    res.json({ ok: true, content, path: filePath });
+  } catch (e) {
+    res.json({ ok: false, error: `Cannot read file: ${filePath}`, path: filePath });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────��──────────────
+// ShieldWatch Fingerprint Receiver
+// sw-beacon.js POSTs here → sensor forwards to collector
+// ───────────────────────────────────────────────���───────────────────────────���─
+app.post('/api/sw/fingerprint', (req, res) => {
+  // Store canvas fingerprint hash in session so sensor can check it on every request
+  // deviceId = hardware-level Mac fingerprint (stable across browsers/VPN)
+  // canvasHash / canvas = rendering fallbacks for older beacon versions
+  const fpId = req.body?.deviceId
+            || req.body?.canvasHash
+            || req.body?.canvas
+            || req.body?.fingerprint?.deviceId
+            || req.body?.fingerprint?.canvas;
+  if (fpId && req.session) {
+    req.session.fpId = fpId;
+  }
+  if (sw && sw.submitFingerprint) sw.submitFingerprint(req.body, req);
+  res.json({ ok: true });
+});
+
+// ───────────────────────────────��─────────────────────────────────��───────────
+// 🍯 HONEYPOT ENDPOINTS
+// Not linked anywhere in the real UI. Any access triggers DECOY verdict.
+// Returns convincing fake data to trap the attacker.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Fake admin user list
+app.get('/api/admin/users', (req, res) => {
+  if (sw && sw.honeypotHit) sw.honeypotHit('/api/admin/users', req);
+  res.json({
+    ok: true,
+    users: [
+      { id: 1, username: 'superadmin',  password: 'N3xaC0rp@2024!',  email: 'superadmin@zynchat.com',  role: 'superadmin', lastLogin: '2024-04-01T09:14:22Z' },
+      { id: 2, username: 'john.smith',  password: 'CEO_J0hn!2024',    email: 'ceo@zynchat.com',         role: 'admin',      lastLogin: '2024-04-02T08:32:11Z' },
+      { id: 3, username: 'it_admin',    password: 'ITSupp0rt#2024',   email: 'it@zynchat.com',          role: 'admin',      lastLogin: '2024-04-02T10:05:44Z' },
+      { id: 4, username: 'alice',       password: 'alice123',          email: 'alice@zynchat.com',       role: 'user',       lastLogin: '2024-04-02T11:21:09Z' },
+      { id: 5, username: 'bob',         password: 'bob123',            email: 'bob@zynchat.com',         role: 'user',       lastLogin: '2024-04-01T16:44:30Z' },
+    ],
+    _note: 'NEXACORP CONFIDENTIAL — UNAUTHORIZED ACCESS LOGGED'
+  });
+});
+
+// Fake config dump
+app.get('/api/admin/config', (req, res) => {
+  if (sw && sw.honeypotHit) sw.honeypotHit('/api/admin/config', req);
+  res.json({
+    ok: true,
+    config: {
+      db_host:     'db.nexacorp.internal',
+      db_port:     5432,
+      db_name:     'zynchat_prod',
+      db_user:     'zynchat_admin',
+      db_password: 'Nx@Pr0d_S3cur3!2024',
+      jwt_secret:  '8e3f92b1c4d5a6e7f8091234abcd5678ef90',
+      api_key:     'sk-zynchat-a1b2c3d4e5f6789012345678',
+      smtp_pass:   'M@il_N3xa_2024!',
+      s3_secret:   'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+    },
+    _note: 'NEXACORP CONFIDENTIAL — UNAUTHORIZED ACCESS LOGGED'
+  });
+});
+
+// Fake database export
+app.get('/api/export', (req, res) => {
+  if (sw && sw.honeypotHit) sw.honeypotHit('/api/export', req);
+  res.json({
+    ok: true,
+    export: {
+      format:    'json',
+      timestamp: new Date().toISOString(),
+      tables: {
+        users:    [{ id:1, username:'superadmin', password_hash:'$2b$12$FakeBcryptHashForDemo', email:'ceo@zynchat.com' }],
+        sessions: [{ token: 'eyJfake.token.here', user_id: 1, expires: '2024-12-31' }],
+        messages: [{ id: 1, text: 'Q1 revenue $4.8M — do not share outside finance', room: 'announcements' }],
+      }
+    },
+    _note: 'NEXACORP CONFIDENTIAL — UNAUTHORIZED ACCESS LOGGED'
+  });
+});
+
+// ─── Security Token (CSRF) ───────────────────────────────────────────────────
+app.get('/api/csrf-token', (req, res) => {
+  const token = crypto.randomBytes(24).toString('hex');
+  req.session.csrfToken = token;
+  res.json({ csrfToken: token });
+});
+
+// FIXED: CSRF Protection with double-submit token pattern
+app.post('/api/profile/update', requireAuth, (req, res) => {
+  const clientToken = req.headers['x-csrf-token'];
+  if (!clientToken || clientToken !== req.session.csrfToken) {
+    if (sw) sw.reportThreat(req, 'csrf', { reason: 'Missing or invalid CSRF token' });
+    return res.status(403).json({ ok: false, error: 'CSRF validation failed' });
+  }
+
+  const { bio, avatar_color, username } = req.body;
+  const prepare = getPrepare();
+  
+  if (username && username.length >= 2 && username.length <= 30) {
+    prepare('UPDATE users SET bio = ?, avatar_color = ?, username = ? WHERE id = ?')
+      .run(bio || '', avatar_color || '#3b82f6', username, req.session.userId);
+    req.session.username = username;
+  } else {
+    prepare('UPDATE users SET bio = ?, avatar_color = ? WHERE id = ?')
+      .run(bio || '', avatar_color || '#3b82f6', req.session.userId);
+  }
+  const updated = prepare('SELECT id,username,role,avatar_color,bio FROM users WHERE id = ?')
+    .get(req.session.userId);
+  logAudit(req.session.userId, 'PROFILE_UPDATE', 'users', req.session.userId, { bio, avatar_color, username }, req);
+  res.json({ ok: true, message: '✅ Profile updated successfully.', user: updated });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⚠️  VULNERABILITY #5: INSECURE DIRECT OBJECT REFERENCE (IDOR)
+//     No auth check — any user ID returns the full DB record including password.
+//     Demo: fetch('/api/user/1') → gets admin's plain-text password.
+// ─────────────────────────────────────────────────────────────────────────────
+// FIXED: IDOR Protection
+// Now requires authentication and only returns non-sensitive fields.
+app.get('/api/user/:id', requireAuth, (req, res) => {
+  const prepare = getPrepare();
+  const user = prepare('SELECT id, username, role, avatar_color, bio FROM users WHERE id = ?').get(req.params.id);
+  if (!user) return res.status(404).json({ ok: false, error: 'User not found' });
+  res.json({ ok: true, user });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⚠️  VULNERABILITY #6: SESSION FIXATION
+//     GET /api/session/id  → reveals the victim's session ID
+//     POST /api/session/fix → attacker pre-sets a known session ID before login
+//     Attack: attacker plants session ID → victim logs in → attacker now owns session
+// ─────────────────────────────────────────────────────────────────────────────
+// FIXED: Session Fixation Removed
+// These endpoints were intentionally vulnerable and have been deleted for security.
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ⚠️  VULNERABILITY #7: COMMAND INJECTION
+//     POST /api/tools/ping — host parameter concatenated directly into exec().
+//     Demo: host = "8.8.8.8 && id"  → runs `id` on the server
+//           host = "8.8.8.8; ls /"  → lists root directory
+//           host = "8.8.8.8 && cat /etc/hostname" → leaks server hostname
+//     With ShieldWatch ON: cmdInjection patterns detected → BLOCKED.
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/tools/ping', requireAuth, (req, res) => {
+  const { host } = req.body;
+  if (!host) return res.json({ ok: false, error: 'host is required' });
+
+  // FIXED: Command Injection Protection
+  // Strict regex for valid IP or hostname to prevent any shell injection characters
+  if (!/^[a-zA-Z0-9\.-]+$/.test(host)) {
+    if (sw) sw.reportThreat(req, 'cmd_injection', { input: host });
+    return res.status(400).json({ ok: false, error: 'Invalid hostname format.' });
+  }
+
+  const cmd = process.platform === 'win32'
+    ? `ping -n 1 ${host}`
+    : `ping -c 1 ${host}`;
+
+  exec(cmd, { timeout: 6000 }, (err, stdout, stderr) => {
+    res.json({
+      ok:     true,
+      host,
+      cmd,
+      output: stdout || stderr || err?.message || 'No output'
+    });
+  });
+});
+
+// ─── Online Users (REST fallback) ─────────────────────────────────────────────
+const onlineUsers = new Map(); // socketId → userObj
+
+app.get('/api/online', requireAuth, (req, res) => {
+  res.json(Array.from(onlineUsers.values()));
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  SOCKET.IO — Real-time chat engine
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Share Express sessions with Socket.io
+io.use((socket, next) => sessionMiddleware(socket.request, {}, next));
+
+io.on('connection', (socket) => {
+  const sess = socket.request.session;
+  if (!sess || !sess.userId) {
+    socket.disconnect(true);
+    return;
+  }
+
+  const prepare = getPrepare();
+  const user    = prepare('SELECT * FROM users WHERE id = ?').get(sess.userId);
+  if (!user) { socket.disconnect(true); return; }
+
+  const userObj = {
+    socketId:     socket.id,
+    userId:       user.id,
+    username:     user.username,
+    role:         user.role,
+    avatar_color: user.avatar_color,
+    roomId:       null
+  };
+
+  onlineUsers.set(socket.id, userObj);
+  broadcastOnlineUsers();
+
+  // ── Join Room ────────────────────────────────────────────────────────────────
+  socket.on('join_room', (roomId) => {
+    const rid = parseInt(roomId, 10);
+    if (isNaN(rid)) return;
+
+    // Leave old room
+    const prev = onlineUsers.get(socket.id);
+    if (prev && prev.roomId) {
+      socket.leave(`room:${prev.roomId}`);
+      socket.to(`room:${prev.roomId}`).emit('typing_stop', { username: prev.username });
+    }
+
+    // Join new room
+    socket.join(`room:${rid}`);
+    userObj.roomId = rid;
+    onlineUsers.set(socket.id, userObj);
+    broadcastOnlineUsers();
+  });
+
+  // ── Chat Message ─────────────────────────────────────────────────────────────
+  socket.on('chat_message', ({ roomId, text }) => {
+    if (!text || typeof text !== 'string') return;
+    const clean = text.trim().slice(0, 2000);
+    if (!clean) return;
+
+    const rid  = parseInt(roomId, 10);
+    const u    = onlineUsers.get(socket.id);
+    if (!u) return;
+
+    const prepare2 = getPrepare();
+    const result   = prepare2(
+      'INSERT INTO messages (room_id, user_id, username, avatar_color, text) VALUES (?, ?, ?, ?, ?)'
+    ).run(rid, u.userId, u.username, u.avatar_color, clean);
+
+    const msg = {
+      id:           result.lastInsertRowid,
+      room_id:      rid,
+      user_id:      u.userId,
+      username:     u.username,
+      avatar_color: u.avatar_color,
+      text:         clean,
+      created_at:   new Date().toISOString()
+    };
+
+    // ShieldWatch Socket.io hook (Returns true if blocked)
+    if (sw && sw.inspectMessage && sw.inspectMessage(msg, socket)) return;
+
+    logAudit(u.userId, 'MESSAGE_SEND', 'messages', result.lastInsertRowid, { room_id: rid }, socket.request);
+
+    io.to(`room:${rid}`).emit('chat_message', msg);
+  });
+
+  // ── Typing Indicators ────────────────────────────────────────────────────────
+  socket.on('typing_start', (roomId) => {
+    const u = onlineUsers.get(socket.id);
+    if (!u) return;
+    socket.to(`room:${roomId}`).emit('typing_start', { username: u.username });
+  });
+
+  socket.on('typing_stop', (roomId) => {
+    const u = onlineUsers.get(socket.id);
+    if (!u) return;
+    socket.to(`room:${roomId}`).emit('typing_stop', { username: u.username });
+  });
+
+  // ── Disconnect ───────────────────────────────────────────────────────────────
+  socket.on('disconnect', () => {
+    const u = onlineUsers.get(socket.id);
+    if (u && u.roomId) {
+      socket.to(`room:${u.roomId}`).emit('typing_stop', { username: u.username });
+    }
+    onlineUsers.delete(socket.id);
+    broadcastOnlineUsers();
+    console.log(`[-] ${user.username} disconnected`);
+  });
+
+  console.log(`[+] ${user.username} connected (${socket.id})`);
+});
+
+function broadcastOnlineUsers() {
+  // Get unique users (objects) for the frontend
+  const seen = new Set();
+  const uniqueUsers = [];
+  
+  for (const u of onlineUsers.values()) {
+    if (!seen.has(u.username)) {
+      seen.add(u.username);
+      uniqueUsers.push(u);
+    }
+  }
+  
+  // Send objects to frontend (chat.js)
+  io.emit('users_update', uniqueUsers);
+  
+  // Send simple username list to ShieldWatch dashboard
+  if (sw && sw.syncActiveUsers) {
+    sw.syncActiveUsers(uniqueUsers.map(u => u.username));
+  }
+}
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+async function startServer() {
+  try {
+    await initDB();
+    await initShieldWatch();
+    
+    server.listen(PORT, '0.0.0.0', () => {
+      console.log(`\n🚀 ZynChat running → http://localhost:${PORT}\n`);
+    });
+  } catch (err) {
+    console.error('[Fatal] Server startup failed:', err);
+    process.exit(1);
+  }
+}
+
+startServer();
+
+module.exports = { app, server };
