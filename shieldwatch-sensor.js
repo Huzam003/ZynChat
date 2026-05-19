@@ -54,7 +54,6 @@ const COLLECTOR = parseAddr(RAW_ADDR);
 const blockedIPs = new Set();
 const blockedFingerprints = new Set();
 const blockedSessions = new Set();
-const blockedServerFPs = new Set(); // Server-side HTTP fingerprint blocks (catches terminal attacks)
 
 let ioInstance = null;
 function setIO(io) {
@@ -86,12 +85,10 @@ function enforceActiveBlocks() {
       } else if (username && blockedSessions.has(username)) {
         shouldBlock = true;
         reason = 'session blocked';
-      } else if (blockedServerFPs.size > 0) {
-        const sfp = computeServerFingerprint(socket.request);
-        if (blockedServerFPs.has(sfp.sfpId)) {
-          shouldBlock = true;
-          reason = 'client tool fingerprint blocked';
-        }
+        // Surgical session kick: remove username from local set immediately so it acts as a one-time kick
+        blockedSessions.delete(username);
+        // Call collector API to remove from remote blockedSessions as well
+        report('/api/unblock-session', { session: username });
       }
       
       if (shouldBlock) {
@@ -201,36 +198,7 @@ function fetchSessionBlocklist() {
   req.end();
 }
 
-function fetchServerFPBlocklist() {
-  const module_ = COLLECTOR.useHttps ? https : http;
-  const options  = {
-    hostname: COLLECTOR.host,
-    port:     COLLECTOR.port,
-    path:     '/api/blocked-sfp',
-    method:   'GET',
-    headers:  {
-      'ngrok-skip-browser-warning': 'true',
-      'x-shieldwatch-token': API_TOKEN
-    },
-    timeout:  4000,
-  };
-  const req = module_.request(options, res => {
-    let data = '';
-    res.on('data', c => data += c);
-    res.on('end', () => {
-      try {
-        const list = JSON.parse(data);
-        if (!Array.isArray(list)) return;
-        blockedServerFPs.clear();
-        list.forEach(fp => blockedServerFPs.add(fp));
-        if (list.length > 0) console.log(`[ShieldWatch] 🖥️ Server fingerprint blocklist synced: ${list.length}`);
-      } catch {}
-    });
-  });
-  req.on('error',   () => {});
-  req.on('timeout', () => req.destroy());
-  req.end();
-}
+
 
 function computeServerFingerprint(req) {
   const headerNames = [];
@@ -271,12 +239,10 @@ function computeServerFingerprint(req) {
 fetchBlocklist();
 fetchFingerprintBlocklist();
 fetchSessionBlocklist();
-fetchServerFPBlocklist();
 
 setInterval(fetchBlocklist, 5_000);
 setInterval(fetchFingerprintBlocklist, 5_000);
 setInterval(fetchSessionBlocklist, 5_000);
-setInterval(fetchServerFPBlocklist, 5_000);
 
 // ─── IDOR Detection ──────────────────────────────────────────────────────────
 function checkIDOR(req) {
@@ -632,11 +598,13 @@ function _httpMiddlewareInner(req, res, next) {
   // ── Session block check ──────────────────────────────────────────────────
   const username = req.session?.username;
   if (username && blockedSessions.has(username)) {
-    console.log(`[ShieldWatch] ✂️ BLOCKED SESSION: ${username} tried ${rawPath}`);
+    console.log(`[ShieldWatch] ✂️ BLOCKED SESSION (KICK): ${username} tried ${rawPath}`);
     req.session.destroy();
-    return res.status(403).json({
+    blockedSessions.delete(username);
+    report('/api/unblock-session', { session: username });
+    return res.status(401).json({
       ok: false, blocked: true,
-      error: 'Your session has been terminated by ShieldWatch.',
+      error: 'Your session has been terminated by ShieldWatch (one-time kick).',
       threat: 'blocked_session',
     });
   }
@@ -644,15 +612,6 @@ function _httpMiddlewareInner(req, res, next) {
   // ── Server-Side HTTP Fingerprint (catches terminal/script attacks) ──────
   const sfp = computeServerFingerprint(req);
   req._sfp = sfp;
-
-  if (blockedServerFPs.has(sfp.sfpId)) {
-    console.log(`[ShieldWatch] 🖥️ BLOCKED SERVER-FP: ${sfp.sfpId} | headers: ${sfp.headerCount} | IP: ${reqIP}`);
-    return res.status(403).json({
-      ok: false, blocked: true,
-      error:  'Your client tool has been permanently blocked by ShieldWatch.',
-      threat: 'blocked_server_fp',
-    });
-  }
 
   // ── Flag non-browser clients hitting API endpoints ─────────────────────
   if (sfp.isLikelyTool && rawPath.startsWith('/api/') && rawPath !== '/api/sw/fingerprint') {

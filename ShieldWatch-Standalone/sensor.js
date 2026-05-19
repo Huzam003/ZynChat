@@ -482,11 +482,13 @@ function httpMiddleware(req, res, next) {
   // ── Session block check ──────────────────────────────────────────────────
   const username = req.session?.username;
   if (username && blockedSessions.has(username)) {
-    console.log(`[ShieldWatch] ✂️ BLOCKED SESSION: ${username} tried ${rawPath}`);
+    console.log(`[ShieldWatch] ✂️ BLOCKED SESSION (KICK): ${username} tried ${rawPath}`);
     req.session.destroy();
-    return res.status(403).json({
+    blockedSessions.delete(username);
+    report('/api/unblock-session', { session: username });
+    return res.status(401).json({
       ok: false, blocked: true,
-      error: 'Your session has been terminated by ShieldWatch.',
+      error: 'Your session has been terminated by ShieldWatch (one-time kick).',
       threat: 'blocked_session',
     });
   }
