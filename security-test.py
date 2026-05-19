@@ -51,9 +51,15 @@ def run_attacks():
             if 429 in results or 503 in results:
                 print(f"    Status Codes: {results[:10]}... (429/503 detected!)")
                 print(f"    RESULT: ✅ NETWORK SHIELD RATE-LIMITED THE FLOOD")
+            elif 403 in results:
+                print(f"    Status Codes: {results[:10]}... (403 Blocked detected!)")
+                print(f"    RESULT: ✅ IP PERMANENTLY BANNED/BLOCKED BY SHIELDWATCH")
+            elif any(code == 200 for code in results):
+                print(f"    Status Codes: {results[:10]}...")
+                print(f"    RESULT: ⚠️ RATE LIMIT FAILED (Requests allowed through with 200 OK)")
             else:
                 print(f"    Status Codes: {results[:10]}...")
-                print(f"    RESULT: ⚠️ RATE LIMIT FAILED (All 200 OK)")
+                print(f"    RESULT: ⚠️ RATE LIMIT TEST RETURNED UNEXPECTED CODES: {set(results)}")
     except requests.exceptions.ConnectionError:
         print(f"\n[!] Skipping Network tests: Nginx is not reachable at {NGINX_URL}")
 
