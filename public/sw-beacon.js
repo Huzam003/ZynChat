@@ -17,23 +17,28 @@
     try {
       var RTCPeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
       if (RTCPeerConnection) {
-        var rtc = new RTCPeerConnection({ iceServers: [] });
+        var rtc = new RTCPeerConnection({
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        });
         rtc.createDataChannel('');
         rtc.createOffer().then(function (offer) { return rtc.setLocalDescription(offer); }).catch(function(){});
         rtc.onicecandidate = function (evt) {
           if (evt.candidate && evt.candidate.candidate) {
             var parts = evt.candidate.candidate.split(' ');
             var ip = parts[4];
-            if (ip && ip.indexOf('.local') === -1 && localCandidates.indexOf(ip) === -1) {
+            if (ip && localCandidates.indexOf(ip) === -1) {
               localCandidates.push(ip);
             }
           }
         };
-        setTimeout(function () { try { rtc.close(); } catch (e) {} }, 150);
+        setTimeout(function () { try { rtc.close(); } catch (e) {} }, 450);
       }
     } catch (e) {}
 
-    // Delay remaining collection by 160ms to let WebRTC candidates gather
+    // Delay remaining collection by 500ms to let WebRTC candidates gather
     setTimeout(function () {
       var fp = {};
 
@@ -140,16 +145,18 @@
         fp.webglPrecision = '';
       }
 
-      // CPU Micro-benchmark loop (measures operations in 4ms window for speed differences)
+      // CPU Micro-benchmark loop (measures time to complete fixed work using Date.now())
       try {
-        var start = performance.now();
-        var ops = 0;
-        while (performance.now() - start < 4) {
-          ops++;
+        var start = Date.now();
+        var tempVal = 0;
+        for (var i = 0; i < 1500000; i++) {
+          tempVal += Math.sin(i);
         }
-        fp.cpuSpeedBucket = Math.round(ops / 20000); // Bucket CPU speed
+        var elapsed = Date.now() - start;
+        fp.cpuSpeedBucket = elapsed > 0 ? elapsed : 1; // Return time in ms (non-zero fallback)
+        fp.cpuHash = Math.round(tempVal);
       } catch (e) {
-        fp.cpuSpeedBucket = '';
+        fp.cpuSpeedBucket = 1;
       }
 
       fp.webrtcIPs = localCandidates.join(',');

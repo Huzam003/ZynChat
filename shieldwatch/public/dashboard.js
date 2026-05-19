@@ -395,7 +395,7 @@ function renderProfile(a) {
   $('pWebRTC').textContent  = fp.webrtcIPs || '—';
   $('pAudio').textContent   = fp.audioInfo || '—';
   $('pWebGLPrec').textContent = fp.webglPrecision || '—';
-  $('pCPUSpeed').textContent = fp.cpuSpeedBucket != null ? `${fp.cpuSpeedBucket} bucket` : '—';
+  $('pCPUSpeed').textContent = fp.cpuSpeedBucket != null ? `${fp.cpuSpeedBucket} ms (lower is faster)` : '—';
 
   // ── Attack Summary ──
   const summary  = $('attackSummary');
