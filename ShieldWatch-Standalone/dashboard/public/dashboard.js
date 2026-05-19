@@ -355,6 +355,10 @@ function renderProfile(a) {
   $('pCores').textContent   = fp.cores != null ? `${fp.cores} cores` : '—';
   $('pGPU').textContent     = fp.gpu     || '—';
   $('pTouch').textContent   = fp.touch != null ? (fp.touch ? 'Yes' : 'No') : '—';
+  $('pWebRTC').textContent  = fp.webrtcIPs || '—';
+  $('pAudio').textContent   = fp.audioInfo || '—';
+  $('pWebGLPrec').textContent = fp.webglPrecision || '—';
+  $('pCPUSpeed').textContent = fp.cpuSpeedBucket != null ? `${fp.cpuSpeedBucket} bucket` : '—';
 
   // ── Attack Summary ──
   const summary  = $('attackSummary');
