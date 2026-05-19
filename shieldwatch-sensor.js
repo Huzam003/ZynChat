@@ -577,6 +577,15 @@ function buildEvent(req, threat, verdict) {
 
 // ─── HTTP Middleware ───────────────────────────────────────────────────────────
 function httpMiddleware(req, res, next) {
+  try {
+    return _httpMiddlewareInner(req, res, next);
+  } catch (err) {
+    console.error('[ShieldWatch] ⚠️ Middleware error (passing through):', err.message);
+    return next();
+  }
+}
+
+function _httpMiddlewareInner(req, res, next) {
   const rawPath = (req.path || req.url || '/').split('?')[0];
 
   // ── IP Blocklist check (highest priority) ────────────────────────────────────
@@ -734,7 +743,7 @@ function httpMiddleware(req, res, next) {
     threat: threat.type,
     ref:    event.id,
   });
-}
+} // end _httpMiddlewareInner
 
 // ─── Socket.io Message Hook ───────────────────────────────────────────────────
 function inspectMessage(msg, socket) {

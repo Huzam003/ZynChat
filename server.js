@@ -328,7 +328,7 @@ app.get('/api/file', requireAuth, (req, res) => {
   const fullPath   = path.resolve(uploadsDir, filePath);
 
   if (!fullPath.startsWith(uploadsDir)) {
-    if (sw) sw.reportThreat(req, 'path_traversal', { path: filePath });
+    try { if (sw) sw.reportThreat(req, 'path_traversal', { path: filePath }); } catch {}
     return res.status(403).json({ ok: false, error: 'Access denied: Security violation.' });
   }
 
@@ -431,7 +431,7 @@ app.get('/api/csrf-token', (req, res) => {
 app.post('/api/profile/update', requireAuth, (req, res) => {
   const clientToken = req.headers['x-csrf-token'];
   if (!clientToken || clientToken !== req.session.csrfToken) {
-    if (sw) sw.reportThreat(req, 'csrf', { reason: 'Missing or invalid CSRF token' });
+    try { if (sw) sw.reportThreat(req, 'csrf', { reason: 'Missing or invalid CSRF token' }); } catch {}
     return res.status(403).json({ ok: false, error: 'CSRF validation failed' });
   }
 
@@ -489,7 +489,7 @@ app.post('/api/tools/ping', requireAuth, (req, res) => {
   // FIXED: Command Injection Protection
   // Strict regex for valid IP or hostname to prevent any shell injection characters
   if (!/^[a-zA-Z0-9\.-]+$/.test(host)) {
-    if (sw) sw.reportThreat(req, 'cmd_injection', { input: host });
+    try { if (sw) sw.reportThreat(req, 'cmd_injection', { input: host }); } catch {}
     return res.status(400).json({ ok: false, error: 'Invalid hostname format.' });
   }
 
