@@ -822,6 +822,12 @@ function reportNginxEvent(req, reason) {
   report('/api/event', event);
 }
 
+function isBlocked(username, fpId) {
+  if (username && blockedSessions.has(username)) return true;
+  if (fpId && blockedFingerprints.has(fpId)) return true;
+  return false;
+}
+
 module.exports = {
   httpMiddleware,
   middleware: httpMiddleware,
@@ -833,5 +839,6 @@ module.exports = {
   trackLoginFailure,
   reportNginxEvent,
   syncActiveUsers,
-  setIO
+  setIO,
+  isBlocked
 };
