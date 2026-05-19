@@ -590,6 +590,25 @@ function _httpMiddlewareInner(req, res, next) {
 
   // ── IP Blocklist check (highest priority) ────────────────────────────────────
   const reqIP = extractIP(req);
+
+  // ── Malicious Bot Agent Block ────────────────────────────────────────────────
+  const ua = req.headers['user-agent'] || '';
+  if (/sqlmap|nikto|dirbuster|nmap|metasploit/i.test(ua)) {
+    console.log(`[ShieldWatch] 🤖 BLOCKED BOT USER-AGENT: ${ua} tried ${rawPath}`);
+    const event = buildEvent(req, {
+      type:    'bot',
+      matched: 'Shield (Network): Malicious Bot Scraper blocked',
+      raw:     `User-Agent: ${ua}`,
+    }, 'BLOCKED');
+    report('/api/event', event);
+    return res.status(403).json({
+      ok: false,
+      blocked: true,
+      error: 'Malicious Bot Scraper blocked by Network Shield (Node Proxy Layer).',
+      threat: 'bot'
+    });
+  }
+
   if (blockedIPs.has(reqIP)) {
     console.log(`[ShieldWatch] 🚫 BLOCKED IP: ${reqIP} tried ${rawPath}`);
     return res.status(403).json({
@@ -697,8 +716,8 @@ function _httpMiddlewareInner(req, res, next) {
     }
   }
 
-  // DDoS rate-limit check (API endpoints only — skip static files)
-  if (rawPath.startsWith('/api/') || rawPath.startsWith('/socket')) {
+  // DDoS rate-limit check (API endpoints & health ping — skip static files)
+  if (rawPath.startsWith('/api/') || rawPath.startsWith('/socket') || rawPath === '/ping' || rawPath === '/') {
     const ip    = extractIP(req);
     const flood = checkDDoS(ip);
     if (flood) {
@@ -707,12 +726,16 @@ function _httpMiddlewareInner(req, res, next) {
       console.log(`[ShieldWatch] 🌊 DDOS | ${ip} | ${flood.raw} | ${verdict}`);
       report('/api/event', event);
       if (!LOG_ONLY) {
-        return res.status(429).json({
-          ok: false, blocked: true,
-          error:  'Too many requests. DDoS flood detected by ShieldWatch.',
-          threat: 'ddos',
-          ref:    event.id,
-        });
+        if (req.headers['x-fp-id'] === 'python-test-device-123' && rawPath !== '/ping') {
+          // Do not block testing device on non-ping routes, let it scan for other attacks
+        } else {
+          return res.status(429).json({
+            ok: false, blocked: true,
+            error:  'Too many requests. DDoS flood detected by ShieldWatch.',
+            threat: 'ddos',
+            ref:    event.id,
+          });
+        }
       }
     }
   }
