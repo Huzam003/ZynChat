@@ -589,6 +589,15 @@ io.on('connection', (socket) => {
         created_at:   new Date().toISOString()
       };
 
+      // Shadow ban: if session/device is blocked, echo back to sender only — room never sees it
+      if (sw && sw.isBlocked) {
+        const fpId = socket.request?.session?.fpId;
+        if (sw.isBlocked(u.username, fpId)) {
+          socket.emit('chat_message', msg); // sender thinks it went through
+          return;
+        }
+      }
+
       if (sw && sw.inspectMessage) {
         const blocked = sw.inspectMessage(msg, socket);
         if (blocked) {
