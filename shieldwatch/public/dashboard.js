@@ -221,20 +221,27 @@ function renderAttackTypes(byType, total) {
   el.innerHTML = entries.map(([type, count]) => {
     const pct  = total > 0 ? Math.round((count / total) * 100) : 0;
     const meta = attackMeta(type);
+    const safeType = type.toLowerCase();
     return `
       <div class="attack-type-row">
         <span class="attack-type-icon">${meta.icon}</span>
-        <div style="flex:1">
-          <div style="display:flex;align-items:center">
+        <div class="flex-1">
+          <div class="display-flex-align-center">
             <span class="attack-type-name">${meta.label}</span>
-            <span class="attack-type-count" style="color:${meta.color}">${count}</span>
+            <span class="attack-type-count clr-${safeType}">${count}</span>
           </div>
           <div class="attack-type-bar">
-            <div class="attack-type-bar-fill" style="width:${pct}%;background:${meta.color}"></div>
+            <div class="attack-type-bar-fill bg-${safeType}" data-pct="${pct}"></div>
           </div>
         </div>
       </div>`;
   }).join('');
+
+  // Programmatic styling (CSP Compliant)
+  el.querySelectorAll('.attack-type-bar-fill').forEach(fill => {
+    const pct = fill.getAttribute('data-pct');
+    fill.style.width = pct + '%';
+  });
 }
 
 
@@ -893,13 +900,19 @@ async function openReportModal() {
     
     // Render report HTML
     body.innerHTML = renderReportHTML(data);
+
+    // Set widths programmatically (CSP Compliant)
+    body.querySelectorAll('.report-tbl-pct-fill').forEach(fill => {
+      const pct = fill.getAttribute('data-pct');
+      fill.style.width = pct + '%';
+    });
   } catch (err) {
     console.error(err);
     body.innerHTML = `
-      <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; color:var(--red); gap:12px;">
-        <span style="font-size:32px;">⚠️</span>
-        <span style="font-weight:bold;">Failed to generate report</span>
-        <span style="font-size:11px; color:var(--text-muted);">${err.message}</span>
+      <div class="report-error-wrapper">
+        <span class="report-error-icon">⚠️</span>
+        <span class="report-error-title">Failed to generate report</span>
+        <span class="report-error-msg">${err.message}</span>
       </div>
     `;
     showToast('❌ Report generation failed', 'red');
@@ -921,13 +934,13 @@ function renderReportHTML(r) {
     <!-- ── 1. CRYPTO AUDIT ── -->
     <div class="report-section">
       <div class="report-section-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-small"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
         Cryptographic Integrity Audit
       </div>
-      <div style="display:flex; align-items:center; justify-content:space-between; background:var(--surface2); border:1px solid var(--border); padding:12px 16px; border-radius:var(--radius-sm);">
+      <div class="report-crypto-audit">
         <div>
-          <div style="font-weight:bold; color:var(--text); margin-bottom:4px;">SHA-256 Telemetry Chain Verification</div>
-          <div style="font-size:11px; color:var(--text-muted);">${escHtml(hc.reason)}</div>
+          <div class="report-crypto-title">SHA-256 Telemetry Chain Verification</div>
+          <div class="report-crypto-reason">${escHtml(hc.reason)}</div>
         </div>
         ${hcBadge}
       </div>
@@ -936,7 +949,7 @@ function renderReportHTML(r) {
     <!-- ── 2. METRICS OVERVIEW ── -->
     <div class="report-section">
       <div class="report-section-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-small"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
         Summary Metrics
       </div>
       <div class="report-grid">
@@ -944,20 +957,20 @@ function renderReportHTML(r) {
           <div class="report-card-val">${r.stats.total}</div>
           <div class="report-card-lbl">Threat Events</div>
         </div>
-        <div class="report-card" style="border-color:rgba(239,68,68,0.2);">
-          <div class="report-card-val" style="color:var(--red);">${r.stats.blocked}</div>
+        <div class="report-card report-card-red">
+          <div class="report-card-val report-card-val-red">${r.stats.blocked}</div>
           <div class="report-card-lbl">Blocked</div>
         </div>
-        <div class="report-card" style="border-color:rgba(249,115,22,0.2);">
-          <div class="report-card-val" style="color:var(--orange);">${r.stats.decoys}</div>
+        <div class="report-card report-card-orange">
+          <div class="report-card-val report-card-val-orange">${r.stats.decoys}</div>
           <div class="report-card-lbl">Decoy Traps</div>
         </div>
-        <div class="report-card" style="border-color:rgba(168,85,247,0.2);">
-          <div class="report-card-val" style="color:var(--purple);">${r.stats.attackersCount}</div>
+        <div class="report-card report-card-purple">
+          <div class="report-card-val report-card-val-purple">${r.stats.attackersCount}</div>
           <div class="report-card-lbl">Attackers</div>
         </div>
-        <div class="report-card" style="border-color:rgba(16,185,129,0.2);">
-          <div class="report-card-val" style="color:var(--green);">${r.stats.activeUsersCount}</div>
+        <div class="report-card report-card-green">
+          <div class="report-card-val report-card-val-green">${r.stats.activeUsersCount}</div>
           <div class="report-card-lbl">Active Users</div>
         </div>
       </div>
@@ -966,7 +979,7 @@ function renderReportHTML(r) {
     <!-- ── 3. THREAT DISTRIBUTION ── -->
     <div class="report-section">
       <div class="report-section-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-small"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Attack Distribution
       </div>
       <table class="report-table">
@@ -983,21 +996,22 @@ function renderReportHTML(r) {
   
   const types = Object.entries(r.byType).sort((a,b) => b[1] - a[1]);
   if (types.length === 0) {
-    html += `<tr><td colspan="4" style="text-align:center; color:var(--text-muted); font-style:italic;">No security events logged yet</td></tr>`;
+    html += `<tr><td colspan="4" class="report-tbl-empty">No security events logged yet</td></tr>`;
   } else {
     types.forEach(([type, count]) => {
       const meta = attackMeta(type);
+      const safeType = type.toLowerCase();
       const pct = r.stats.total > 0 ? Math.round((count / r.stats.total) * 100) : 0;
       html += `
         <tr>
-          <td><span style="font-size:14px; margin-right:6px;">${meta.icon}</span><strong>${meta.label}</strong></td>
-          <td><code class="mono" style="background:var(--surface3); padding:2px 6px; border-radius:4px; font-size:11px;">${type}</code></td>
-          <td style="font-weight:bold; color:${meta.color};">${count}</td>
+          <td><span class="report-tbl-icon">${meta.icon}</span><strong>${meta.label}</strong></td>
+          <td><code class="mono report-tbl-type-code">${type}</code></td>
+          <td class="report-color-${safeType}">${count}</td>
           <td>
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span style="min-width:30px; font-weight:bold; font-size:11px;">${pct}%</span>
-              <div style="flex:1; height:4px; background:var(--surface3); border-radius:2px; overflow:hidden;">
-                <div style="width:${pct}%; height:100%; background:${meta.color};"></div>
+            <div class="report-tbl-pct-wrapper">
+              <span class="report-tbl-pct-lbl">${pct}%</span>
+              <div class="report-tbl-pct-bar">
+                <div class="report-tbl-pct-fill bg-${safeType}" data-pct="${pct}"></div>
               </div>
             </div>
           </td>
@@ -1014,46 +1028,46 @@ function renderReportHTML(r) {
     <!-- ── 4. BLOCKLISTS ── -->
     <div class="report-section">
       <div class="report-section-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-small"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
         Active Enforcement Blocklists
       </div>
-      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
-        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px;">
-          <div style="font-weight:bold; color:var(--text); font-size:11px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+      <div class="report-blocklist-grid">
+        <div class="report-blocklist-card">
+          <div class="report-blocklist-header">
             <span>🚫 Blocked IPs</span>
-            <span style="background:rgba(239,68,68,0.15); color:var(--red); padding:1px 6px; border-radius:10px; font-size:10px;">${r.enforcement.blockedIPs.length}</span>
+            <span class="report-blocklist-badge-red">${r.enforcement.blockedIPs.length}</span>
           </div>
-          <div style="max-height:100px; overflow-y:auto; font-family:monospace; font-size:11px; color:var(--text-sec); display:flex; flex-direction:column; gap:4px;">
-            ${r.enforcement.blockedIPs.map(ip => `<div>${escHtml(ip)}</div>`).join('') || '<div style="color:var(--text-muted); font-style:italic;">None</div>'}
+          <div class="report-blocklist-body">
+            ${r.enforcement.blockedIPs.map(ip => `<div>${escHtml(ip)}</div>`).join('') || '<div class="report-color-text-muted italic">None</div>'}
           </div>
         </div>
         
-        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px;">
-          <div style="font-weight:bold; color:var(--text); font-size:11px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+        <div class="report-blocklist-card">
+          <div class="report-blocklist-header">
             <span>🔒 Banned Devices</span>
-            <span style="background:rgba(168,85,247,0.15); color:var(--purple); padding:1px 6px; border-radius:10px; font-size:10px;">${r.enforcement.blockedFingerprints.length}</span>
+            <span class="report-blocklist-badge-purple">${r.enforcement.blockedFingerprints.length}</span>
           </div>
-          <div style="max-height:100px; overflow-y:auto; font-family:monospace; font-size:11px; color:var(--text-sec); display:flex; flex-direction:column; gap:4px;">
-            ${r.enforcement.blockedFingerprints.map(fp => `<div>${escHtml(fp.slice(0,12))}…</div>`).join('') || '<div style="color:var(--text-muted); font-style:italic;">None</div>'}
+          <div class="report-blocklist-body">
+            ${r.enforcement.blockedFingerprints.map(fp => `<div>${escHtml(fp.slice(0,12))}…</div>`).join('') || '<div class="report-color-text-muted italic">None</div>'}
           </div>
         </div>
         
-        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px;">
-          <div style="font-weight:bold; color:var(--text); font-size:11px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+        <div class="report-blocklist-card">
+          <div class="report-blocklist-header">
             <span>✂️ Kicked Sessions</span>
-            <span style="background:rgba(234,179,8,0.15); color:var(--yellow); padding:1px 6px; border-radius:10px; font-size:10px;">${r.enforcement.blockedSessions.length}</span>
+            <span class="report-blocklist-badge-yellow">${r.enforcement.blockedSessions.length}</span>
           </div>
-          <div style="max-height:100px; overflow-y:auto; font-family:monospace; font-size:11px; color:var(--text-sec); display:flex; flex-direction:column; gap:4px;">
-            ${r.enforcement.blockedSessions.map(sid => `<div>${escHtml(sid.slice(0,12))}…</div>`).join('') || '<div style="color:var(--text-muted); font-style:italic;">None</div>'}
+          <div class="report-blocklist-body">
+            ${r.enforcement.blockedSessions.map(sid => `<div>${escHtml(sid.slice(0,12))}…</div>`).join('') || '<div class="report-color-text-muted italic">None</div>'}
           </div>
         </div>
       </div>
     </div>
     
     <!-- ── 5. HIGHEST THREAT ATTACKERS ── -->
-    <div class="report-section" style="margin-bottom:0;">
+    <div class="report-section report-section-margin-none">
       <div class="report-section-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-small"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         High-Threat Profile Directory
       </div>
       <table class="report-table">
@@ -1072,21 +1086,23 @@ function renderReportHTML(r) {
   `;
   
   if (r.topAttackers.length === 0) {
-    html += `<tr><td colspan="7" style="text-align:center; color:var(--text-muted); font-style:italic;">No high-threat attacker profiles identified</td></tr>`;
+    html += `<tr><td colspan="7" class="report-tbl-empty">No high-threat attacker profiles identified</td></tr>`;
   } else {
     r.topAttackers.forEach(a => {
       const displayName = a.session.replace(/^anon@/, 'Guest ');
       const geoStr = a.geo.country_name ? `${getFlagEmoji(a.geo.country_code)} ${a.geo.country_name}` : 'Unknown';
-      const threatColor = a.threatScore >= 80 ? 'var(--red)' : (a.threatScore >= 50 ? 'var(--orange)' : 'var(--yellow)');
+      const threatClass = a.threatScore >= 80 ? 'report-color-red' : (a.threatScore >= 50 ? 'report-color-orange' : 'report-color-yellow');
+      const vpnHtml = a.vpnDetected ? '<span class="report-color-orange">ROTATION</span>' : '<span class="report-color-text-muted">None</span>';
+      const fpHtml = a.fpBlocked ? '<span class="report-color-red">BANNED</span>' : '<span class="report-color-text-muted">Active</span>';
       html += `
         <tr>
-          <td class="mono" style="font-weight:bold; color:var(--text-sec);">${escHtml(displayName)}</td>
+          <td class="mono report-attk-name">${escHtml(displayName)}</td>
           <td class="mono">${escHtml(a.ip)}</td>
-          <td style="font-weight:bold; color:${threatColor};">${a.threatScore}</td>
-          <td><span style="font-weight:bold; color:${threatColor}; font-size:10px;">${a.threatLevel}</span></td>
+          <td class="${threatClass}">${a.threatScore}</td>
+          <td><span class="${threatClass} report-font-10">${a.threatLevel}</span></td>
           <td>${geoStr}</td>
-          <td>${a.vpnDetected ? '<span style="color:var(--orange); font-weight:bold;">ROTATION</span>' : '<span style="color:var(--text-muted);">None</span>'}</td>
-          <td>${a.fpBlocked ? '<span style="color:var(--red); font-weight:bold;">BANNED</span>' : '<span style="color:var(--text-muted);">Active</span>'}</td>
+          <td>${vpnHtml}</td>
+          <td>${fpHtml}</td>
         </tr>
       `;
     });
