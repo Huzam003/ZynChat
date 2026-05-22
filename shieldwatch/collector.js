@@ -253,6 +253,8 @@ function requireApiOrAdmin(req, res, next) {
 // Static files (public/login)
 app.use('/login-assets', express.static(path.join(__dirname, 'public', 'login-assets')));
 app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
+app.get('/login.css', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.css')));
+app.get('/login.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.js')));
 
 // API Auth (Public)
 app.post('/api/auth/login', rateLimit(10, 15 * 60 * 1000), checkDashboardBruteForce, (req, res) => {
@@ -472,6 +474,7 @@ app.get('/',           (req, res) => res.sendFile(path.join(__dirname, 'public',
 app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/dashboard.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.js')));
 app.get('/dashboard.css', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.css')));
+app.get('/chart.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'chart.js')));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA STORE (Declared globally at the top of the file)
