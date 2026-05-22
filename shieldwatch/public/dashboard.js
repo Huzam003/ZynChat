@@ -171,9 +171,7 @@ function renderList(targetId, list, emptyMsg) {
 
     return `
       <div class="${chipClass} ${isSelected ? 'selected' : ''}" 
-           style="cursor:pointer"
-           data-session="${a.session}"
-           onclick="selectAttackerBySession('${a.session}')">
+           data-session="${a.session}">
         <div class="attacker-dot" style="background:${dotColor}"></div>
         <span class="attacker-icon">${hasThreat ? '🎯' : '👤'}</span>
         <span class="attacker-name">${displayName}</span>
@@ -604,7 +602,7 @@ function renderBlockedList() {
     html += `
       <div class="blocked-ip-row">
         <span class="blocked-ip-addr"><span class="badge badge-yellow">IP</span> 🚫 ${escHtml(ip)}</span>
-        <button class="unblock-btn" onclick="unblockIP('${escHtml(ip)}')">Unblock</button>
+        <button class="unblock-btn" data-type="ip" data-value="${escHtml(ip)}">Unblock</button>
       </div>`;
   });
 
@@ -613,7 +611,7 @@ function renderBlockedList() {
     html += `
       <div class="blocked-ip-row">
         <span class="blocked-ip-addr"><span class="badge badge-purple">DEV</span> 🚫 ${escHtml(fp.slice(0,12))}…</span>
-        <button class="unblock-btn" onclick="unblockFingerprint('${escHtml(fp)}')">Unblock</button>
+        <button class="unblock-btn" data-type="fp" data-value="${escHtml(fp)}">Unblock</button>
       </div>`;
   });
 
@@ -622,7 +620,7 @@ function renderBlockedList() {
     html += `
       <div class="blocked-ip-row">
         <span class="blocked-ip-addr"><span class="badge badge-red">SESS</span> 🚫 ${escHtml(sid)}</span>
-        <button class="unblock-btn" onclick="unblockSession('${escHtml(sid)}')">Unblock</button>
+        <button class="unblock-btn" data-type="session" data-value="${escHtml(sid)}">Unblock</button>
       </div>`;
   });
 
@@ -822,6 +820,36 @@ function bindButtons() {
   if (uF) uF.onclick = unblockCurrentFP;
   if (bIP) bIP.onclick = blockCurrentIP;
   if (uIP) uIP.onclick = unblockCurrentIP;
+
+  // Delegation for dynamically generated unblock buttons
+  const blockedListContainer = $('blockedList');
+  if (blockedListContainer) {
+    blockedListContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.unblock-btn');
+      if (!btn) return;
+      const type = btn.getAttribute('data-type');
+      const val = btn.getAttribute('data-value');
+      if (type === 'ip') {
+        unblockIP(val);
+      } else if (type === 'fp') {
+        unblockFingerprint(val);
+      } else if (type === 'session') {
+        unblockSession(val);
+      }
+    });
+  }
+
+  // Delegation for attacker / user chips in left panel
+  const userList = $('userList');
+  const attackerList = $('attackerList');
+  const handleChipClick = (e) => {
+    const chip = e.target.closest('.attacker-chip, .user-chip');
+    if (!chip) return;
+    const session = chip.getAttribute('data-session');
+    if (session) selectAttackerBySession(session);
+  };
+  if (userList) userList.addEventListener('click', handleChipClick);
+  if (attackerList) attackerList.addEventListener('click', handleChipClick);
 
   // Report Feature Bindings
   const rep = $('reportBtn');
