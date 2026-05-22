@@ -649,6 +649,40 @@ function threatLevel(score) {
   return { label: 'LOW', color: '#10b981' };
 }
 
+function verifyHashChain() {
+  if (events.length === 0) {
+    return { valid: true, length: 0, reason: 'No events to verify.' };
+  }
+  
+  // Clone and reverse to verify chronologically (oldest first)
+  const chronologicalEvents = events.slice().reverse();
+  let currentHash = '0000000000000000'; // root hash
+  
+  for (let i = 0; i < chronologicalEvents.length; i++) {
+    const evt = chronologicalEvents[i];
+    
+    // We need to re-hash the event without its chainHash property
+    const evtToHash = { ...evt };
+    delete evtToHash.chainHash;
+    
+    const hash = crypto.createHash('sha256');
+    hash.update(currentHash + JSON.stringify(evtToHash));
+    const calculatedHash = hash.digest('hex');
+    
+    if (calculatedHash !== evt.chainHash) {
+      console.warn(`[Security] 🚨 Hash chain broken at index ${i}! Expected: ${evt.chainHash}, Calculated: ${calculatedHash}`);
+      return { 
+        valid: false, 
+        length: i, 
+        reason: `Verification failed at event index ${i} (ID: ${evt.id}). Chain is broken.`
+      };
+    }
+    currentHash = calculatedHash;
+  }
+  
+  return { valid: true, length: events.length, reason: 'All hashes verified successfully.' };
+}
+
 // ─── API Endpoints (Admin Protected) ──────────────────────────────────────────
 app.get('/api/stats', (req, res) => {
   res.json({
@@ -659,6 +693,53 @@ app.get('/api/stats', (req, res) => {
 
 app.get('/api/attackers', (req, res) => res.json(Array.from(attackers.values())));
 app.get('/api/events',    (req, res) => res.json(events));
+
+app.get('/api/report', (req, res) => {
+  const validation = verifyHashChain();
+  const attackersList = Array.from(attackers.values());
+  
+  // Compile report data
+  const reportData = {
+    timestamp: new Date().toISOString(),
+    stats: {
+      total: globalStats.total,
+      blocked: globalStats.blocked,
+      decoys: globalStats.decoys,
+      logged: globalStats.logged,
+      attackersCount: attackersList.filter(a => a.threatScore > 0).length,
+      activeUsersCount: attackersList.filter(a => {
+        if (!a.isOnline) return false;
+        const isBlocked = blockedIPs.has(a.ip) || 
+                          (a.fpId && blockedFingerprints.has(a.fpId)) || 
+                          blockedSessions.has(a.session);
+        return !isBlocked;
+      }).length
+    },
+    byType: globalStats.byType,
+    enforcement: {
+      blockedIPs: Array.from(blockedIPs),
+      blockedFingerprints: Array.from(blockedFingerprints),
+      blockedSessions: Array.from(blockedSessions)
+    },
+    hashChain: validation,
+    topAttackers: attackersList
+      .filter(a => a.threatScore > 0)
+      .sort((a, b) => b.threatScore - a.threatScore)
+      .map(a => ({
+        session: a.session,
+        ip: a.ip,
+        threatScore: a.threatScore,
+        threatLevel: threatLevel(a.threatScore).label,
+        geo: a.geo || {},
+        attackCounts: a.attackCounts,
+        vpnDetected: a.vpnDetected,
+        fpBlocked: a.fpBlocked,
+        fpId: a.fpId
+      }))
+  };
+  
+  res.json(reportData);
+});
 
 // ─── Block Actions (Hardened) ────────────────────────────────────────────────
 app.post('/api/block-fp', (req, res) => {

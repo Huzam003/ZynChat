@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">ZynChat</string>
-    <string name="title_activity_main">ZynChat</string>
-    <string name="package_name">com.zynchat.app</string>
-    <string name="custom_url_scheme">com.zynchat.app</string>
-</resources>

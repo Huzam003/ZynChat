@@ -59,6 +59,7 @@
     </svg>
   </button>
 
+  <button class="reset-btn" id="reportBtn" style="border-color:var(--purple); color:var(--purple); margin-left:10px" title="Generate Security Report">📋 Report</button>
   <button class="reset-btn" id="resetBtn" title="Clear all data">↺ Reset</button>
   <button class="reset-btn" id="logoutBtn" style="border-color:var(--red); color:var(--red); margin-left:10px">Logout</button>
 </header>
@@ -264,6 +265,25 @@
   </aside>
 
 </div><!-- /.grid -->
+
+<!-- ═══ REPORT MODAL ════════════════════════════════════════════════════════ -->
+<div id="reportModal" class="modal-overlay hidden">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>🛡️ ShieldWatch Security Telemetry Report</h2>
+      <button class="close-modal-btn" id="closeReportBtn">&times;</button>
+    </div>
+    <div class="modal-body" id="reportModalBody">
+      <div style="display:flex; justify-content:center; align-items:center; height:100%; color:var(--text-muted);">
+        <span>Loading report details...</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="action-btn" id="downloadReportBtn" style="border-color:var(--purple); color:var(--purple);">📥 Download Markdown</button>
+      <button class="action-btn" id="printReportBtn" style="border-color:var(--cyan); color:var(--cyan);">🖨️ Print Report</button>
+    </div>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="/sw.io/socket.io.js"></script>

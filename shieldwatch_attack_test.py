@@ -7,7 +7,7 @@ from datetime import datetime
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-DEFAULT_TARGET    = "http://localhost:3001"
+DEFAULT_TARGET    = "https://zynchat.onrender.com"
 DEFAULT_DELAY     = 1.0   # seconds between tests
 REQUEST_TIMEOUT   = 6     # seconds
 
@@ -185,7 +185,7 @@ def test_ddos(target, session, delay):
     for i in range(1, 26):
         name = f"Flood request #{i}/25"
         resp = run_test(session, name, "GET", f"{target}/api/messages")
-        if resp and resp.status_code == 429:
+        if resp is not None and resp.status_code == 429:
             blocked_count += 1
         time.sleep(0.1)  # very fast — intentional flood
     print(f"   {C.DIM}Rate limit triggered on {blocked_count} requests{C.RESET}")

@@ -818,6 +818,328 @@ function bindButtons() {
   if (uS) uS.onclick = unblockCurrentSession;
   if (bF) bF.onclick = blockCurrentFP;
   if (uF) uF.onclick = unblockCurrentFP;
+
+  // Report Feature Bindings
+  const rep = $('reportBtn');
+  if (rep) rep.onclick = openReportModal;
+  const cRep = $('closeReportBtn');
+  if (cRep) cRep.onclick = closeReportModal;
+  const dRep = $('downloadReportBtn');
+  if (dRep) dRep.onclick = downloadReportMarkdown;
+  const pRep = $('printReportBtn');
+  if (pRep) pRep.onclick = () => window.print();
+
+  const modal = $('reportModal');
+  if (modal) {
+    modal.onclick = (e) => {
+      if (e.target === modal) closeReportModal();
+    };
+  }
+}
+
+// ─── Report Logic ────────────────────────────────────────────────────────────
+let currentReportData = null;
+
+async function openReportModal() {
+  const modal = $('reportModal');
+  const body = $('reportModalBody');
+  if (!modal || !body) return;
+  
+  modal.classList.remove('hidden');
+  body.innerHTML = `
+    <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; color:var(--text-muted); gap:12px;">
+      <div style="border: 4px solid var(--surface3); border-top: 4px solid var(--purple); border-radius: 50%; width: 36px; height: 36px; animation: spin-loader 1s linear infinite;"></div>
+      <span>Querying Security Telemetry Node...</span>
+    </div>
+    <style>
+      @keyframes spin-loader {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+  `;
+  
+  try {
+    const res = await fetch('/api/report');
+    if (!res.ok) throw new Error('Failed to query node');
+    const data = await res.json();
+    currentReportData = data;
+    
+    // Render report HTML
+    body.innerHTML = renderReportHTML(data);
+  } catch (err) {
+    console.error(err);
+    body.innerHTML = `
+      <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; color:var(--red); gap:12px;">
+        <span style="font-size:32px;">⚠️</span>
+        <span style="font-weight:bold;">Failed to generate report</span>
+        <span style="font-size:11px; color:var(--text-muted);">${err.message}</span>
+      </div>
+    `;
+    showToast('❌ Report generation failed', 'red');
+  }
+}
+
+function closeReportModal() {
+  const modal = $('reportModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function renderReportHTML(r) {
+  const hc = r.hashChain;
+  const hcBadge = hc.valid 
+    ? `<div class="status-success-badge" title="Cryptographically verified SHA-256 chain log state.">✅ Log Integrity Secured (${hc.length} events verified)</div>`
+    : `<div class="status-fail-badge" title="${escHtml(hc.reason)}">🚨 Log Tampering Detected: ${escHtml(hc.reason)}</div>`;
+    
+  let html = `
+    <!-- ── 1. CRYPTO AUDIT ── -->
+    <div class="report-section">
+      <div class="report-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Cryptographic Integrity Audit
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; background:var(--surface2); border:1px solid var(--border); padding:12px 16px; border-radius:var(--radius-sm);">
+        <div>
+          <div style="font-weight:bold; color:var(--text); margin-bottom:4px;">SHA-256 Telemetry Chain Verification</div>
+          <div style="font-size:11px; color:var(--text-muted);">${escHtml(hc.reason)}</div>
+        </div>
+        ${hcBadge}
+      </div>
+    </div>
+    
+    <!-- ── 2. METRICS OVERVIEW ── -->
+    <div class="report-section">
+      <div class="report-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+        Summary Metrics
+      </div>
+      <div class="report-grid">
+        <div class="report-card">
+          <div class="report-card-val">${r.stats.total}</div>
+          <div class="report-card-lbl">Threat Events</div>
+        </div>
+        <div class="report-card" style="border-color:rgba(239,68,68,0.2);">
+          <div class="report-card-val" style="color:var(--red);">${r.stats.blocked}</div>
+          <div class="report-card-lbl">Blocked</div>
+        </div>
+        <div class="report-card" style="border-color:rgba(249,115,22,0.2);">
+          <div class="report-card-val" style="color:var(--orange);">${r.stats.decoys}</div>
+          <div class="report-card-lbl">Decoy Traps</div>
+        </div>
+        <div class="report-card" style="border-color:rgba(168,85,247,0.2);">
+          <div class="report-card-val" style="color:var(--purple);">${r.stats.attackersCount}</div>
+          <div class="report-card-lbl">Attackers</div>
+        </div>
+        <div class="report-card" style="border-color:rgba(16,185,129,0.2);">
+          <div class="report-card-val" style="color:var(--green);">${r.stats.activeUsersCount}</div>
+          <div class="report-card-lbl">Active Users</div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- ── 3. THREAT DISTRIBUTION ── -->
+    <div class="report-section">
+      <div class="report-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Attack Distribution
+      </div>
+      <table class="report-table">
+        <thead>
+          <tr>
+            <th>Attack Category</th>
+            <th>Type Code</th>
+            <th>Occurrences</th>
+            <th>Proportion</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+  
+  const types = Object.entries(r.byType).sort((a,b) => b[1] - a[1]);
+  if (types.length === 0) {
+    html += `<tr><td colspan="4" style="text-align:center; color:var(--text-muted); font-style:italic;">No security events logged yet</td></tr>`;
+  } else {
+    types.forEach(([type, count]) => {
+      const meta = attackMeta(type);
+      const pct = r.stats.total > 0 ? Math.round((count / r.stats.total) * 100) : 0;
+      html += `
+        <tr>
+          <td><span style="font-size:14px; margin-right:6px;">${meta.icon}</span><strong>${meta.label}</strong></td>
+          <td><code class="mono" style="background:var(--surface3); padding:2px 6px; border-radius:4px; font-size:11px;">${type}</code></td>
+          <td style="font-weight:bold; color:${meta.color};">${count}</td>
+          <td>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="min-width:30px; font-weight:bold; font-size:11px;">${pct}%</span>
+              <div style="flex:1; height:4px; background:var(--surface3); border-radius:2px; overflow:hidden;">
+                <div style="width:${pct}%; height:100%; background:${meta.color};"></div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+  }
+  
+  html += `
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- ── 4. BLOCKLISTS ── -->
+    <div class="report-section">
+      <div class="report-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+        Active Enforcement Blocklists
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px;">
+          <div style="font-weight:bold; color:var(--text); font-size:11px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+            <span>🚫 Blocked IPs</span>
+            <span style="background:rgba(239,68,68,0.15); color:var(--red); padding:1px 6px; border-radius:10px; font-size:10px;">${r.enforcement.blockedIPs.length}</span>
+          </div>
+          <div style="max-height:100px; overflow-y:auto; font-family:monospace; font-size:11px; color:var(--text-sec); display:flex; flex-direction:column; gap:4px;">
+            ${r.enforcement.blockedIPs.map(ip => `<div>${escHtml(ip)}</div>`).join('') || '<div style="color:var(--text-muted); font-style:italic;">None</div>'}
+          </div>
+        </div>
+        
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px;">
+          <div style="font-weight:bold; color:var(--text); font-size:11px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+            <span>🔒 Banned Devices</span>
+            <span style="background:rgba(168,85,247,0.15); color:var(--purple); padding:1px 6px; border-radius:10px; font-size:10px;">${r.enforcement.blockedFingerprints.length}</span>
+          </div>
+          <div style="max-height:100px; overflow-y:auto; font-family:monospace; font-size:11px; color:var(--text-sec); display:flex; flex-direction:column; gap:4px;">
+            ${r.enforcement.blockedFingerprints.map(fp => `<div>${escHtml(fp.slice(0,12))}…</div>`).join('') || '<div style="color:var(--text-muted); font-style:italic;">None</div>'}
+          </div>
+        </div>
+        
+        <div style="background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px;">
+          <div style="font-weight:bold; color:var(--text); font-size:11px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+            <span>✂️ Kicked Sessions</span>
+            <span style="background:rgba(234,179,8,0.15); color:var(--yellow); padding:1px 6px; border-radius:10px; font-size:10px;">${r.enforcement.blockedSessions.length}</span>
+          </div>
+          <div style="max-height:100px; overflow-y:auto; font-family:monospace; font-size:11px; color:var(--text-sec); display:flex; flex-direction:column; gap:4px;">
+            ${r.enforcement.blockedSessions.map(sid => `<div>${escHtml(sid.slice(0,12))}…</div>`).join('') || '<div style="color:var(--text-muted); font-style:italic;">None</div>'}
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- ── 5. HIGHEST THREAT ATTACKERS ── -->
+    <div class="report-section" style="margin-bottom:0;">
+      <div class="report-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        High-Threat Profile Directory
+      </div>
+      <table class="report-table">
+        <thead>
+          <tr>
+            <th>Session Name</th>
+            <th>IP Address</th>
+            <th>Threat Score</th>
+            <th>Level</th>
+            <th>Location</th>
+            <th>VPN Status</th>
+            <th>Device Ban</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+  
+  if (r.topAttackers.length === 0) {
+    html += `<tr><td colspan="7" style="text-align:center; color:var(--text-muted); font-style:italic;">No high-threat attacker profiles identified</td></tr>`;
+  } else {
+    r.topAttackers.forEach(a => {
+      const displayName = a.session.replace(/^anon@/, 'Guest ');
+      const geoStr = a.geo.country_name ? `${getFlagEmoji(a.geo.country_code)} ${a.geo.country_name}` : 'Unknown';
+      const threatColor = a.threatScore >= 80 ? 'var(--red)' : (a.threatScore >= 50 ? 'var(--orange)' : 'var(--yellow)');
+      html += `
+        <tr>
+          <td class="mono" style="font-weight:bold; color:var(--text-sec);">${escHtml(displayName)}</td>
+          <td class="mono">${escHtml(a.ip)}</td>
+          <td style="font-weight:bold; color:${threatColor};">${a.threatScore}</td>
+          <td><span style="font-weight:bold; color:${threatColor}; font-size:10px;">${a.threatLevel}</span></td>
+          <td>${geoStr}</td>
+          <td>${a.vpnDetected ? '<span style="color:var(--orange); font-weight:bold;">ROTATION</span>' : '<span style="color:var(--text-muted);">None</span>'}</td>
+          <td>${a.fpBlocked ? '<span style="color:var(--red); font-weight:bold;">BANNED</span>' : '<span style="color:var(--text-muted);">Active</span>'}</td>
+        </tr>
+      `;
+    });
+  }
+  
+  html += `
+        </tbody>
+      </table>
+    </div>
+  `;
+  
+  return html;
+}
+
+function downloadReportMarkdown() {
+  if (!currentReportData) return;
+  const r = currentReportData;
+  const ts = new Date(r.timestamp).toLocaleString();
+  
+  let md = `# ShieldWatch UADR — Security Telemetry Report\n`;
+  md += `*Generated at: ${ts}*\n\n`;
+  
+  md += `## 1. Cryptographic Log Integrity Audit\n`;
+  md += `* **Status**: ${r.hashChain.valid ? '✅ SECURE / VERIFIED' : '🚨 COMPROMISED / CHAIN BROKEN'}\n`;
+  md += `* **Verified Event Log Length**: ${r.hashChain.length} entries\n`;
+  md += `* **Audit Log Details**: ${r.hashChain.reason}\n\n`;
+  
+  md += `## 2. Statistical Summary\n`;
+  md += `* **Total Threat Events**: ${r.stats.total}\n`;
+  md += `* **Enforced Blocks**: ${r.stats.blocked}\n`;
+  md += `* **Decoy Traps Triggered**: ${r.stats.decoys}\n`;
+  md += `* **Flagged Attackers**: ${r.stats.attackersCount}\n`;
+  md += `* **Active Legitimate Sessions**: ${r.stats.activeUsersCount}\n\n`;
+  
+  md += `## 3. Threat Distribution\n`;
+  const types = Object.entries(r.byType);
+  if (types.length === 0) {
+    md += `*No threats recorded.*\n\n`;
+  } else {
+    md += `| Attack Type | Frequency | Percentage |\n`;
+    md += `| :--- | :---: | :---: |\n`;
+    types.forEach(([type, count]) => {
+      const pct = r.stats.total > 0 ? Math.round((count / r.stats.total) * 100) : 0;
+      const meta = attackMeta(type);
+      md += `| ${meta.icon} ${meta.label} | ${count} | ${pct}% |\n`;
+    });
+    md += `\n`;
+  }
+  
+  md += `## 4. Enforcement Blocklists\n`;
+  md += `* **Blocked IP Addresses (${r.enforcement.blockedIPs.length})**: ${r.enforcement.blockedIPs.join(', ') || 'None'}\n`;
+  md += `* **Banned Device Fingerprints (${r.enforcement.blockedFingerprints.length})**: ${r.enforcement.blockedFingerprints.map(x => x.slice(0, 12) + '...').join(', ') || 'None'}\n`;
+  md += `* **Kicked Sessions (${r.enforcement.blockedSessions.length})**: ${r.enforcement.blockedSessions.join(', ') || 'None'}\n\n`;
+  
+  md += `## 5. High-Threat Attacker Profiles\n`;
+  if (r.topAttackers.length === 0) {
+    md += `*No high-threat attacker profiles recorded.*\n\n`;
+  } else {
+    md += `| Session ID | IP Address | Threat Score | Level | Geolocation | VPN Active? | Device Banned? |\n`;
+    md += `| :--- | :--- | :---: | :--- | :--- | :---: | :---: |\n`;
+    r.topAttackers.forEach(a => {
+      const geoStr = a.geo.country_name ? `${a.geo.country_name} (${a.geo.city || '?'})` : 'Unknown';
+      md += `| ${a.session} | ${a.ip} | ${a.threatScore} | ${a.threatLevel} | ${geoStr} | ${a.vpnDetected ? 'Yes' : 'No'} | ${a.fpBlocked ? 'Yes' : 'No'} |\n`;
+    });
+    md += `\n`;
+  }
+  
+  md += `\n---\n*Report compiled by ShieldWatch Runtime Application Self-Protection Node.*\n`;
+  
+  // Download file trigger
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `shieldwatch-security-report-${Date.now()}.md`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 // Bind now and on load

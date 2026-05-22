@@ -247,11 +247,11 @@ setInterval(fetchSessionBlocklist, 5_000);
 // ─── IDOR Detection ──────────────────────────────────────────────────────────
 function checkIDOR(req) {
   const rawPath = (req.path || req.url || '/').split('?')[0];
-  // /api/user/:id — accessing another user's full record
-  const match = rawPath.match(/^\/api\/user\/(\d+)$/);
+  // /api/user/:id or /api/user/:id/profile — accessing another user's full record
+  const match = rawPath.match(/^\/api\/user\/([^\/]+)(?:\/profile)?$/);
   if (!match) return null;
-  const requestedId  = parseInt(match[1], 10);
-  const sessionUserId = req.session?.userId;
+  const requestedId  = match[1];
+  const sessionUserId = String(req.session?.userId || '');
   // Accessing ANY user record without owning it = IDOR
   if (!sessionUserId || requestedId !== sessionUserId) {
     return {
@@ -282,19 +282,64 @@ function checkSessionFixation(req) {
 
 // ─── CSRF Detection ──────────────────────────────────────────────────────────
 // State-changing endpoints that must only be called via JSON (not form POST)
-const CSRF_PROTECTED = new Set(['/api/profile/update', '/api/settings', '/api/user/delete']);
+const CSRF_PROTECTED = new Set(['/api/profile/update', '/api/settings', '/api/user/delete', '/api/user/settings']);
 
 function checkCSRF(req) {
   const rawPath = (req.path || req.url || '/').split('?')[0];
   if (!CSRF_PROTECTED.has(rawPath)) return null;
   if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) return null;
 
+  const origin  = req.headers['origin']  || '';
+  const referer = req.headers['referer'] || '';
+  
+  // Detect if Origin or Referer is untrusted or missing
+  // Legitimate requests to the API should come from localhost or zynchat.onrender.com
+  const allowedHosts = ['localhost', '127.0.0.1', 'zynchat.onrender.com'];
+  const getDomain = (urlStr) => {
+    try {
+      return new URL(urlStr).hostname.toLowerCase();
+    } catch {
+      return urlStr.toLowerCase();
+    }
+  };
+
+  let isEvil = false;
+  let reason = '';
+
+  if (origin) {
+    const originHost = getDomain(origin);
+    if (!allowedHosts.some(h => originHost === h || originHost.endsWith('.' + h))) {
+      isEvil = true;
+      reason = `Evil Origin: ${origin}`;
+    }
+  }
+
+  if (referer) {
+    const refererHost = getDomain(referer);
+    if (!allowedHosts.some(h => refererHost === h || refererHost.endsWith('.' + h))) {
+      isEvil = true;
+      reason = `Evil Referer: ${referer}`;
+    }
+  }
+
+  // Enforce Origin/Referer header presence for JSON API requests to state-changing endpoints
+  if (!origin && !referer) {
+    isEvil = true;
+    reason = 'Missing both Origin and Referer headers';
+  }
+
+  if (isEvil) {
+    return {
+      type:    'csrf',
+      matched: 'Shield (App): CSRF attack detected and blocked',
+      raw:     `${req.method} ${rawPath} | ${reason}`,
+    };
+  }
+
   const ct = (req.headers['content-type'] || '').toLowerCase();
   // Legitimate app calls always use application/json
   // A CSRF form submission arrives as application/x-www-form-urlencoded or multipart
   if (ct.includes('application/x-www-form-urlencoded') || ct.includes('multipart/form-data')) {
-    const origin  = req.headers['origin']  || '';
-    const referer = req.headers['referer'] || '';
     return {
       type:    'csrf',
       matched: 'Shield (App): Unauthorized state-changing form submission (CSRF)',
@@ -369,6 +414,35 @@ setInterval(() => {
   }
 }, 30_000);
 
+// ─── Registration Rate-Limit Detection ─────────────────────────────────────────
+const registrationTracker = new Map(); // ip → [timestamp, ...]
+const REG_WINDOW_MS = 3600_000;       // 1 hour
+const REG_THRESHOLD = 5;              // > 5 registrations in 1 hour = block
+
+function checkRegistrationSpam(req) {
+  const rawPath = (req.path || req.url || '/').split('?')[0];
+  if (rawPath !== '/api/register' || req.method !== 'POST') return null;
+
+  const ip  = extractIP(req);
+  const now = Date.now();
+  const prev = (registrationTracker.get(ip) || []).filter(t => now - t < REG_WINDOW_MS);
+  prev.push(now);
+
+  if (registrationTracker.size >= MAX_TRACKER_SIZE && !registrationTracker.has(ip)) {
+    registrationTracker.delete(registrationTracker.keys().next().value);
+  }
+  registrationTracker.set(ip, prev);
+
+  if (prev.length > REG_THRESHOLD) {
+    return {
+      type:    'bot',
+      matched: 'Shield (App): Registration Spam detected',
+      raw:     `${prev.length} registration attempts in 1 hour from ${ip}`,
+    };
+  }
+  return null;
+}
+
 // ─── Honeypot paths ──────────────────────────────────────────────────────────
 const HONEYPOT_PATHS = new Set([
   '/api/admin/users', '/api/admin/config', '/api/export',
@@ -427,7 +501,7 @@ const PATTERNS = {
     /\/boot\.ini/i,
   ],
   cmdInjection: [
-    /[;&|`$]\s*(ls|cat|pwd|id|whoami|uname|curl|wget|bash|sh|python|perl|nc|netcat|ncat|php)\b/i,
+    /(?:[;&|`$\s]|^)(?:sudo\s+)?(ls|cat|pwd|id|whoami|uname|curl|wget|bash|sh|python\d*|perl|nc|netcat|ncat|php)\b/i,
     /`[^`]+`/,
     /\$\([^)]+\)/,
     /\{[^\}]+\}/, // Braces expansion
@@ -670,6 +744,23 @@ function _httpMiddlewareInner(req, res, next) {
         ok: false, blocked: true,
         error:  'CSRF attack detected and blocked by ShieldWatch.',
         threat: 'csrf',
+        ref:    event.id,
+      });
+    }
+  }
+
+  // Registration spam check
+  const regThreat = checkRegistrationSpam(req);
+  if (regThreat) {
+    const verdict = LOG_ONLY ? 'LOGGED' : 'BLOCKED';
+    const event   = buildEvent(req, regThreat, verdict);
+    console.log(`[ShieldWatch] 🤖 REG SPAM | ${reqIP} | ${verdict}`);
+    report('/api/event', event);
+    if (!LOG_ONLY) {
+      return res.status(429).json({
+        ok: false, blocked: true,
+        error: 'Too many registration attempts. Registration spam blocked by ShieldWatch.',
+        threat: 'bot',
         ref:    event.id,
       });
     }
