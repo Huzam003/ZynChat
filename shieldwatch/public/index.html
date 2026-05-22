@@ -59,9 +59,9 @@
     </svg>
   </button>
 
-  <button class="reset-btn" id="reportBtn" style="border-color:var(--purple); color:var(--purple); margin-left:10px" title="Generate Security Report">📋 Report</button>
+  <button class="reset-btn report-btn" id="reportBtn" title="Generate Security Report">📋 Report</button>
   <button class="reset-btn" id="resetBtn" title="Clear all data">↺ Reset</button>
-  <button class="reset-btn" id="logoutBtn" style="border-color:var(--red); color:var(--red); margin-left:10px">Logout</button>
+  <button class="reset-btn logout-btn" id="logoutBtn">Logout</button>
 </header>
 
 <!-- ═══ MAIN GRID ══════════════════════════════════════════════════════════ -->
@@ -186,27 +186,27 @@
         <div class="profile-row"><span class="pr-lbl">Session</span><span class="pr-val" id="pSession">—</span></div>
         <div class="profile-row"><span class="pr-lbl">IP Address</span><span class="pr-val mono" id="pIP">—</span></div>
         <div class="profile-row"><span class="pr-lbl">Status</span><span class="pr-val" id="pHoneypot">—</span></div>
-        <div class="profile-row"><span class="pr-lbl">Mac Device ID</span><span class="pr-val mono" id="pFPID" style="color:#a855f7;font-size:10px">—</span></div>
-        <div class="profile-row"><span class="pr-lbl">HTTP Fingerprint</span><span class="pr-val mono" id="pSFP" style="color:#06b6d4;font-size:10px">—</span></div>
+        <div class="profile-row"><span class="pr-lbl">Mac Device ID</span><span class="pr-val mono val-purple" id="pFPID">—</span></div>
+        <div class="profile-row"><span class="pr-lbl">HTTP Fingerprint</span><span class="pr-val mono val-cyan" id="pSFP">—</span></div>
       </div>
 
       <!-- Location -->
       <div class="profile-section">
         <div class="profile-section-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
           Geolocation
         </div>
         <div class="profile-row"><span class="pr-lbl">Country</span><span class="pr-val" id="pCountry">—</span></div>
         <div class="profile-row"><span class="pr-lbl">City</span><span class="pr-val" id="pCity">—</span></div>
         <div class="profile-row"><span class="pr-lbl">ISP / Org</span><span class="pr-val" id="pOrg">—</span></div>
         <div class="profile-row"><span class="pr-lbl">Timezone</span><span class="pr-val" id="pTZ">—</span></div>
-        <div class="profile-row" style="display:none"><span class="pr-lbl">VPN History</span><span class="pr-val" id="pVPNHistory">—</span></div>
+        <div class="profile-row hidden-row"><span class="pr-lbl">VPN History</span><span class="pr-val" id="pVPNHistory">—</span></div>
       </div>
 
       <!-- Device/Browser (from fingerprint) -->
       <div class="profile-section">
         <div class="profile-section-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+          <svg class="icon-small" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
           Device Fingerprint
         </div>
         <div class="profile-row"><span class="pr-lbl">Browser</span><span class="pr-val" id="pBrowser">—</span></div>
@@ -230,35 +230,33 @@
       </div>
 
       <!-- Block Actions (Surgical Only) -->
-      <div style="padding: 0 16px 8px; display:flex; flex-direction:column; gap:8px;">
-        <div style="display:flex; gap:8px;">
-          <button class="block-ip-btn" id="blockIPBtn" onclick="blockCurrentIP()" style="flex:1; background:rgba(239,68,68,0.15); color:#ef4444; border-color:rgba(239,68,68,0.35)">
+      <div class="profile-actions">
+        <div class="btn-group">
+          <button class="block-ip-btn action-red" id="blockIPBtn">
             🚫 Block IP (Permanent)
           </button>
-          <button class="unblock-ip-btn" id="unblockIPBtn" onclick="unblockCurrentIP()" style="display:none; flex:1">
+          <button class="unblock-ip-btn btn-flex-hidden" id="unblockIPBtn">
             ✅ Unblock IP
           </button>
         </div>
 
-        <div style="display:flex; gap:8px;">
-          <button class="block-ip-btn" id="blockSessionBtn" onclick="blockCurrentSession()" style="flex:1; background:rgba(234,179,8,0.15); color:#eab308; border-color:rgba(234,179,8,0.35)">
+        <div class="btn-group">
+          <button class="block-ip-btn action-yellow" id="blockSessionBtn">
             ✂️ Kill Session (Kick)
           </button>
-          <button class="unblock-ip-btn" id="unblockSessionBtn" onclick="unblockCurrentSession()" style="display:none; flex:1">
+          <button class="unblock-ip-btn btn-flex-hidden" id="unblockSessionBtn">
             ✅ Restore Session
           </button>
         </div>
 
-        <div style="display:flex; gap:8px;">
-          <button class="block-ip-btn" id="blockFPBtn" onclick="blockCurrentFP()" style="flex:1; background:rgba(168,85,247,0.15);color:#a855f7;border-color:rgba(168,85,247,0.35)">
+        <div class="btn-group">
+          <button class="block-ip-btn action-purple" id="blockFPBtn">
             🔒 Ban Device (Permanent)
           </button>
-          <button class="unblock-ip-btn" id="unblockFPBtn" onclick="unblockCurrentFP()" style="display:none; flex:1">
+          <button class="unblock-ip-btn btn-flex-hidden" id="unblockFPBtn">
             ✅ Unban Device
           </button>
         </div>
-
-
       </div>
 
     </div><!-- /.profile-content -->
@@ -274,18 +272,18 @@
       <button class="close-modal-btn" id="closeReportBtn">&times;</button>
     </div>
     <div class="modal-body" id="reportModalBody">
-      <div style="display:flex; justify-content:center; align-items:center; height:100%; color:var(--text-muted);">
+      <div class="modal-loading-wrapper">
         <span>Loading report details...</span>
       </div>
     </div>
     <div class="modal-footer">
-      <button class="action-btn" id="downloadReportBtn" style="border-color:var(--purple); color:var(--purple);">📥 Download Markdown</button>
-      <button class="action-btn" id="printReportBtn" style="border-color:var(--cyan); color:var(--cyan);">🖨️ Print Report</button>
+      <button class="action-btn download-btn" id="downloadReportBtn">📥 Download Markdown</button>
+      <button class="action-btn print-btn" id="printReportBtn">🖨️ Print Report</button>
     </div>
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="chart.js"></script>
 <script src="/sw.io/socket.io.js"></script>
 <script src="dashboard.js"></script>
 </body>

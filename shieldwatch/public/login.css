@@ -1,0 +1,57 @@
+:root {
+  --bg: #06070d;
+  --accent: #ef4444;
+  --accent-glow: rgba(239, 68, 68, 0.2);
+  --surface: rgba(15, 17, 26, 0.7);
+  --border: rgba(255, 255, 255, 0.05);
+  --text: #f1f5f9;
+  --text-muted: #475569;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: 'Outfit', sans-serif;
+  height: 100dvh; display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+
+#bgCanvas { position: fixed; inset: 0; opacity: 0.2; z-index: 0; }
+
+.login-card {
+  position: relative; z-index: 1; width: 100%; max-width: 400px;
+  padding: 40px; background: var(--surface); backdrop-filter: blur(20px);
+  border: 1px solid var(--border); border-radius: 24px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  text-align: center;
+}
+
+.sw-logo {
+  width: 60px; height: 60px; background: var(--accent); border-radius: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 800; color: #fff; font-size: 24px; margin-bottom: 24px;
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+h1 { font-size: 24px; font-weight: 800; margin-bottom: 8px; letter-spacing: -0.5px; }
+p { font-size: 13px; color: var(--text-muted); margin-bottom: 32px; font-weight: 500; }
+
+.field { margin-bottom: 20px; text-align: left; }
+label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 8px; display: block; padding-left: 4px; }
+input {
+  width: 100%; padding: 14px; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+  border-radius: 12px; color: #fff; font-size: 15px; outline: none; transition: border-color 0.2s;
+  font-family: 'JetBrains Mono', monospace; text-align: center; letter-spacing: 4px;
+}
+input:focus { border-color: var(--accent); }
+
+.btn-login {
+  width: 100%; padding: 14px; background: var(--accent); border: none; border-radius: 12px;
+  color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+  box-shadow: 0 4px 15px var(--accent-glow); margin-top: 10px;
+}
+.btn-login:hover { transform: translateY(-2px); box-shadow: 0 8px 25px var(--accent-glow); }
+
+.error-msg { color: var(--accent); font-size: 12px; font-weight: 600; margin-top: 16px; min-height: 18px; }
+
+.footer-note { margin-top: 32px; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 2px; }

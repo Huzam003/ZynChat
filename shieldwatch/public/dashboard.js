@@ -814,10 +814,14 @@ function bindButtons() {
   const uS = $('unblockSessionBtn');
   const bF = $('blockFPBtn');
   const uF = $('unblockFPBtn');
+  const bIP = $('blockIPBtn');
+  const uIP = $('unblockIPBtn');
   if (bS) bS.onclick = blockCurrentSession;
   if (uS) uS.onclick = unblockCurrentSession;
   if (bF) bF.onclick = blockCurrentFP;
   if (uF) uF.onclick = unblockCurrentFP;
+  if (bIP) bIP.onclick = blockCurrentIP;
+  if (uIP) uIP.onclick = unblockCurrentIP;
 
   // Report Feature Bindings
   const rep = $('reportBtn');
@@ -847,16 +851,10 @@ async function openReportModal() {
   
   modal.classList.remove('hidden');
   body.innerHTML = `
-    <div style="display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; color:var(--text-muted); gap:12px;">
-      <div style="border: 4px solid var(--surface3); border-top: 4px solid var(--purple); border-radius: 50%; width: 36px; height: 36px; animation: spin-loader 1s linear infinite;"></div>
+    <div class="modal-loading-wrapper">
+      <div class="spinner-loader"></div>
       <span>Querying Security Telemetry Node...</span>
     </div>
-    <style>
-      @keyframes spin-loader {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-      }
-    </style>
   `;
   
   try {

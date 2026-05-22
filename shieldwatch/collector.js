@@ -126,15 +126,26 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      "script-src": ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
-      "script-src-attr": ["'unsafe-inline'"], // [FIX] Allow inline onclick handlers for dashboard buttons
-      "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+      "script-src": ["'self'"],
+      "script-src-attr": null,
+      "style-src": ["'self'", "fonts.googleapis.com"],
       "font-src": ["'self'", "fonts.gstatic.com"],
-      "connect-src": ["'self'", "ws:", "wss:", "http:", "https:"],
+      "connect-src": ["'self'", "ws://localhost:*", "wss://localhost:*", "ws://127.0.0.1:*", "wss://127.0.0.1:*", "wss://*.onrender.com", "https://*.onrender.com"],
       "frame-ancestors": ["'none'"],
     }
-  }
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  },
+  crossOriginEmbedderPolicy: true
 }));
+
+app.use((req, res, next) => {
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  next();
+});
 
 app.use(cors({ origin: true, credentials: true })); 
 app.use(express.json({ limit: '512kb' }));
