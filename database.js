@@ -139,6 +139,30 @@ async function initDB() {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS device_fingerprints (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER,
+      fp_id      TEXT NOT NULL UNIQUE,
+      user_agent TEXT,
+      ip_address TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      last_seen  TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS room_access_control (
+      id        INTEGER PRIMARY KEY AUTOINCREMENT,
+      room_id   INTEGER NOT NULL,
+      role      TEXT NOT NULL,
+      permission TEXT DEFAULT 'read',
+      FOREIGN KEY (room_id) REFERENCES rooms(id),
+      UNIQUE(room_id, role)
+    )
+  `);
+
   // ─── Seed Users (INSERT OR IGNORE — safe to run every boot) ──────────────────
   const demoUsers = [
     { username: 'admin',    password: 'admin123', role: 'admin', color: '#ef4444', bio: 'Platform Administrator' },
@@ -168,6 +192,37 @@ async function initDB() {
   ];
   for (const r of demoRooms) {
     db.run(`INSERT OR IGNORE INTO rooms (name, description, icon) VALUES (?, ?, ?)`, [r.name, r.desc, r.icon]);
+  }
+
+  // ─── Seed Room Access Control ────────────────────────────────────────────────
+  const genRoom  = prepare("SELECT id FROM rooms WHERE name = ?").get('general');
+  const annRoom  = prepare("SELECT id FROM rooms WHERE name = ?").get('announcements');
+  const techRoom = prepare("SELECT id FROM rooms WHERE name = ?").get('tech-talk');
+  const randRoom = prepare("SELECT id FROM rooms WHERE name = ?").get('random');
+
+  const seedAccess = (roomId, role, permission) => {
+    if (roomId) {
+      db.run(
+        `INSERT OR IGNORE INTO room_access_control (room_id, role, permission) VALUES (?, ?, ?)`,
+        [roomId, role, permission]
+      );
+    }
+  };
+
+  if (genRoom) {
+    seedAccess(genRoom.id, 'user', 'read,write');
+    seedAccess(genRoom.id, 'admin', 'read,write,admin');
+  }
+  if (annRoom) {
+    seedAccess(annRoom.id, 'admin', 'read,write,admin');
+  }
+  if (techRoom) {
+    seedAccess(techRoom.id, 'user', 'read,write');
+    seedAccess(techRoom.id, 'admin', 'read,write,admin');
+  }
+  if (randRoom) {
+    seedAccess(randRoom.id, 'user', 'read,write');
+    seedAccess(randRoom.id, 'admin', 'read,write,admin');
   }
 
   // ─── Seed Messages (only if empty) ────────────────────────────────────────────
@@ -238,7 +293,12 @@ function logAudit(userId, action, tableName, recordId, changes, req) {
   );
 }
 
+function execVulnerable(rawSQL) {
+  const results = db.exec(rawSQL);
+  return rowsToObjects(results)[0];
+}
+
 function getDB()      { return db; }
 function getPrepare() { return prepare; }
 
-module.exports = { initDB, getDB, getPrepare, saveDB, logAudit };
+module.exports = { initDB, getDB, getPrepare, execVulnerable, saveDB, logAudit };

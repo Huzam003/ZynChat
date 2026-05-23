@@ -50,18 +50,25 @@ const sessionMiddleware = session({
 
 app.disable('x-powered-by');
 // app.use(cors()); // REMOVED for hardening - only use specific origins if needed
-app.use(helmet({ 
-  contentSecurityPolicy: {
-    directives: {
-      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      "script-src": ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
-      "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
-      "font-src": ["'self'", "fonts.gstatic.com"],
-      "img-src": ["'self'", "data:", "https:"],
-      "connect-src": ["'self'", "ws:", "wss:"],
+app.use((req, res, next) => {
+  res.locals.nonce = crypto.randomBytes(16).toString('hex');
+  next();
+});
+
+app.use((req, res, next) => {
+  helmet({ 
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "script-src": ["'self'", `'nonce-${res.locals.nonce}'`, "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+        "style-src": ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.jsdelivr.net", "cdnjs.cloudflare.com"],
+        "font-src": ["'self'", "fonts.gstatic.com"],
+        "img-src": ["'self'", "data:", "https:"],
+        "connect-src": ["'self'", "ws:", "wss:"],
+      }
     }
-  }
-}));
+  })(req, res, next);
+});
 app.use(express.json({ limit: '512kb' }));
 app.use(express.urlencoded({ extended: false, limit: '64kb' }));
 app.use(sessionMiddleware);
@@ -90,6 +97,46 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ ok: false, error: 'Not authenticated' });
   }
   next();
+}
+
+// ─── Room Access Guard ────────────────────────────────────────────────────────
+function requireRoomAccess(req, res, next) {
+  let roomId = req.params.roomId || req.query.roomId || req.body.roomId;
+  if (!roomId && req.path === '/api/search') {
+    roomId = 1;
+  }
+  if (!roomId) {
+    return res.status(400).json({ ok: false, error: 'Room ID is required.' });
+  }
+
+  const rid = parseInt(roomId, 10);
+  if (isNaN(rid)) {
+    return res.status(400).json({ ok: false, error: 'Invalid Room ID format.' });
+  }
+
+  if (!req.session || !req.session.userId) {
+    return res.status(401).json({ ok: false, error: 'Not authenticated.' });
+  }
+
+  const role = req.session.role || 'user';
+
+  try {
+    const prepare = getPrepare();
+    const access = prepare('SELECT permission FROM room_access_control WHERE room_id = ? AND role = ?').get(rid, role);
+
+    const requiredPermission = req.method === 'POST' ? 'write' : 'read';
+
+    if (!access || !access.permission?.includes(requiredPermission)) {
+      return res.status(403).json({
+        ok: false,
+        error: `Access denied to room ${rid}.`
+      });
+    }
+
+    next();
+  } catch (e) {
+    res.status(500).json({ ok: false, error: sanitizeError(e) });
+  }
 }
 
 // ─── Pages ────────────────────────────────────────────────────────────────────
@@ -159,13 +206,10 @@ app.post('/api/login', (req, res) => {
   // ─── ShieldWatch Fingerprint Gate ───────────────────────────────────────────
   // Block login until the browser fingerprint has been collected by the sensor.
   // This prevents automated scripts and bots that skip the JS fingerprint beacon.
-  const clientFp = req.session?.fpId || req.body?.fpId || req.headers['x-fp-id'];
-  if (clientFp && req.session) {
-    req.session.fpId = clientFp;
-  }
+  const clientFp = req.session?.fpId;
   const ua = req.headers['user-agent'] || '';
   const isMobileApp = /android|iphone|ipad|mobile/i.test(ua);
-  if (sw && !req.session.fpId && !isMobileApp) {
+  if (sw && !isMobileApp && (!clientFp || req.session?.fpVerified !== true)) {
     return res.status(403).json({
       ok:    false,
       code:  'FP_REQUIRED',
@@ -174,32 +218,76 @@ app.post('/api/login', (req, res) => {
   }
 
   try {
-    const prepare = getPrepare();
-    const user    = prepare('SELECT * FROM users WHERE username = ?').get(username);
+    let user;
+    if (!sw) {
+      // Intentionally vulnerable SQL Injection path
+      const query = `SELECT * FROM users WHERE username = '${username}' AND password = '${password}'`;
+      try {
+        const { execVulnerable } = require('./database');
+        user = execVulnerable(query);
+      } catch (e) {
+        // query syntax error, etc.
+      }
 
-    if (!user) {
-      bcrypt.compareSync(password, DUMMY_HASH);
-    }
-    if (!user || !bcrypt.compareSync(password, user.password)) {
-      // Notify ShieldWatch of failed login (brute force tracking)
-      if (sw && sw.trackLoginFailure) {
-        const blocked = sw.trackLoginFailure(req);
-        if (blocked) {
-          return res.status(429).json({
-            ok: false, blocked: true,
-            error: 'Too many failed login attempts. Blocked by ShieldWatch.',
-            threat: 'bruteforce',
-          });
+      // Fallback for normal users since passwords in DB are bcrypt hashed
+      if (!user) {
+        const prepare = getPrepare();
+        const dbUser = prepare('SELECT * FROM users WHERE username = ?').get(username);
+        if (dbUser && bcrypt.compareSync(password, dbUser.password)) {
+          user = dbUser;
         }
       }
+    } else {
+      const prepare = getPrepare();
+      user = prepare('SELECT * FROM users WHERE username = ?').get(username);
+
+      if (!user) {
+        bcrypt.compareSync(password, DUMMY_HASH);
+      }
+      if (!user || !bcrypt.compareSync(password, user.password)) {
+        // Notify ShieldWatch of failed login (brute force tracking)
+        if (sw && sw.trackLoginFailure) {
+          const blocked = sw.trackLoginFailure(req);
+          if (blocked) {
+            return res.status(429).json({
+              ok: false, blocked: true,
+              error: 'Too many failed login attempts. Blocked by ShieldWatch.',
+              threat: 'bruteforce',
+            });
+          }
+        }
+        return res.json({ ok: false, error: 'Invalid username or password.' });
+      }
+    }
+
+    if (!user) {
       return res.json({ ok: false, error: 'Invalid username or password.' });
     }
 
-    req.session.regenerate((err) => {
-      if (err) return res.status(500).json({ ok: false, error: 'Session error.' });
+    const loginSuccess = () => {
       req.session.userId   = user.id;
       req.session.username = user.username;
       req.session.role     = user.role;
+
+      if (clientFp) {
+        req.session.fpId       = clientFp;
+        req.session.fpVerified = true;
+
+        try {
+          const prepareFP = getPrepare();
+          const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1').split(',')[0].trim();
+          const existingFp = prepareFP('SELECT id FROM device_fingerprints WHERE fp_id = ?').get(clientFp);
+          if (existingFp) {
+            prepareFP('UPDATE device_fingerprints SET user_id = ?, user_agent = ?, ip_address = ?, last_seen = datetime(\'now\') WHERE fp_id = ?')
+              .run(user.id, ua, ip, clientFp);
+          } else {
+            prepareFP('INSERT INTO device_fingerprints (user_id, fp_id, user_agent, ip_address) VALUES (?, ?, ?, ?)')
+              .run(user.id, clientFp, ua, ip);
+          }
+        } catch (fpErr) {
+          console.error('[Fingerprint DB Error]', fpErr);
+        }
+      }
 
       res.json({
         ok: true,
@@ -211,7 +299,16 @@ app.post('/api/login', (req, res) => {
           bio:          user.bio
         }
       });
-    });
+    };
+
+    if (sw) {
+      req.session.regenerate((err) => {
+        if (err) return res.status(500).json({ ok: false, error: 'Session error.' });
+        loginSuccess();
+      });
+    } else {
+      loginSuccess();
+    }
   } catch (e) {
     res.status(500).json({ ok: false, error: sanitizeError(e) });
   }
@@ -293,7 +390,7 @@ app.get('/api/rooms', requireAuth, (req, res) => {
 });
 
 // ─── Messages ─────────────────────────────────────────────────────────────────
-app.get('/api/messages/:roomId', requireAuth, (req, res) => {
+app.get('/api/messages/:roomId', requireAuth, requireRoomAccess, (req, res) => {
   try {
     const prepare = getPrepare();
     const msgs    = prepare(
@@ -305,8 +402,12 @@ app.get('/api/messages/:roomId', requireAuth, (req, res) => {
   }
 });
 
+app.post('/api/messages/:roomId', requireAuth, requireRoomAccess, (req, res) => {
+  res.json({ ok: true });
+});
+
 // FIXED: XSS Protection for Search
-app.get('/api/search', requireAuth, (req, res) => {
+app.get('/api/search', requireAuth, requireRoomAccess, (req, res) => {
   const { q, roomId } = req.query;
   if (!q) return res.json({ ok: true, results: [], query: '' });
 
@@ -341,16 +442,19 @@ app.get('/api/file', requireAuth, (req, res) => {
   const filePath = req.query.path;
   if (!filePath) return res.json({ ok: false, error: 'No path specified.' });
 
-  // FIXED: Path Traversal Protection
-  // 1. Normalize the path
-  // 2. Resolve it relative to the uploads directory
-  // 3. Ensure the resolved path is still within the uploads directory
-  const uploadsDir = path.join(__dirname, 'uploads');
-  const fullPath   = path.resolve(uploadsDir, filePath);
+  let fullPath;
+  if (!sw) {
+    // Vulnerable Path Traversal: direct path join without startsWith check
+    fullPath = path.join(__dirname, 'uploads', filePath);
+  } else {
+    // FIXED: Path Traversal Protection
+    const uploadsDir = path.join(__dirname, 'uploads');
+    fullPath   = path.resolve(uploadsDir, filePath);
 
-  if (!fullPath.startsWith(uploadsDir)) {
-    try { if (sw) sw.reportThreat(req, 'path_traversal', { path: filePath }); } catch {}
-    return res.status(403).json({ ok: false, error: 'Access denied: Security violation.' });
+    if (!fullPath.startsWith(uploadsDir)) {
+      try { if (sw) sw.reportThreat(req, 'path_traversal', { path: filePath }); } catch {}
+      return res.status(403).json({ ok: false, error: 'Access denied: Security violation.' });
+    }
   }
 
   try {
@@ -374,8 +478,17 @@ app.post('/api/sw/fingerprint', (req, res) => {
             || req.body?.canvas
             || req.body?.fingerprint?.deviceId
             || req.body?.fingerprint?.canvas;
-  if (fpId && req.session) {
+
+  if (!fpId || !/^[a-f0-9]{16,64}$/.test(fpId)) {
+    if (req.session) {
+      req.session.fpVerified = false;
+    }
+    return res.status(400).json({ ok: false, error: 'Invalid fingerprint format' });
+  }
+
+  if (req.session) {
     req.session.fpId = fpId;
+    req.session.fpVerified = true;
   }
   if (sw && sw.submitFingerprint) sw.submitFingerprint(req.body, req);
   res.json({ ok: true });
@@ -448,12 +561,14 @@ app.get('/api/csrf-token', (req, res) => {
   res.json({ csrfToken: token });
 });
 
-// FIXED: CSRF Protection with double-submit token pattern
+// FIXED: CSRF Protection with double-submit token pattern (only if sw is active)
 app.post('/api/profile/update', requireAuth, (req, res) => {
-  const clientToken = req.headers['x-csrf-token'];
-  if (!clientToken || clientToken !== req.session.csrfToken) {
-    try { if (sw) sw.reportThreat(req, 'csrf', { reason: 'Missing or invalid CSRF token' }); } catch {}
-    return res.status(403).json({ ok: false, error: 'CSRF validation failed' });
+  if (sw) {
+    const clientToken = req.headers['x-csrf-token'];
+    if (!clientToken || clientToken !== req.session.csrfToken) {
+      try { if (sw) sw.reportThreat(req, 'csrf', { reason: 'Missing or invalid CSRF token' }); } catch {}
+      return res.status(403).json({ ok: false, error: 'CSRF validation failed' });
+    }
   }
 
   const { bio, avatar_color, username } = req.body;
@@ -479,11 +594,22 @@ app.post('/api/profile/update', requireAuth, (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // FIXED: IDOR Protection
 // Now requires authentication and only returns non-sensitive fields.
-app.get('/api/user/:id', requireAuth, (req, res) => {
-  const prepare = getPrepare();
-  const user = prepare('SELECT id, username, role, avatar_color, bio FROM users WHERE id = ?').get(req.params.id);
-  if (!user) return res.status(404).json({ ok: false, error: 'User not found' });
-  res.json({ ok: true, user });
+app.get('/api/user/:id', (req, res) => {
+  if (sw) {
+    if (!req.session.userId) {
+      return res.status(401).json({ ok: false, error: 'Not authenticated' });
+    }
+    const prepare = getPrepare();
+    const user = prepare('SELECT id, username, role, avatar_color, bio FROM users WHERE id = ?').get(req.params.id);
+    if (!user) return res.status(404).json({ ok: false, error: 'User not found' });
+    return res.json({ ok: true, user });
+  } else {
+    // Vulnerable IDOR path: no auth check, returns password hash
+    const prepare = getPrepare();
+    const user = prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+    if (!user) return res.status(404).json({ ok: false, error: 'User not found' });
+    return res.json({ ok: true, user });
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -492,8 +618,34 @@ app.get('/api/user/:id', requireAuth, (req, res) => {
 //     POST /api/session/fix → attacker pre-sets a known session ID before login
 //     Attack: attacker plants session ID → victim logs in → attacker now owns session
 // ─────────────────────────────────────────────────────────────────────────────
-// FIXED: Session Fixation Removed
-// These endpoints were intentionally vulnerable and have been deleted for security.
+app.get('/api/session/id', (req, res) => {
+  // !! VULNERABLE: exposes session ID over HTTP !!
+  res.json({
+    ok:        true,
+    sessionId: req.sessionID,
+    username:  req.session.username || null,
+    role:      req.session.role     || null,
+    userId:    req.session.userId   || null,
+    _warning:  'This endpoint should NOT exist in production!'
+  });
+});
+
+app.post('/api/session/fix', (req, res) => {
+  // !! VULNERABLE: accepts attacker-controlled session ID !!
+  const { sessionId } = req.body;
+  if (!sessionId) return res.json({ ok: false, error: 'sessionId required' });
+  // Store attacker's desired session ID in the session data so it can be retrieved
+  req.session.fixedId = sessionId;
+  req.session.save(() => {
+    res.json({
+      ok:          true,
+      message:     'Session fixation successful.',
+      attackerSet: sessionId,
+      activeSid:   req.sessionID,
+      _note:       'Attacker now knows victim\'s session ID. When victim logs in, attacker can hijack the session using this SID.'
+    });
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ⚠️  VULNERABILITY #7: COMMAND INJECTION
@@ -507,11 +659,12 @@ app.post('/api/tools/ping', requireAuth, (req, res) => {
   const { host } = req.body;
   if (!host) return res.json({ ok: false, error: 'host is required' });
 
-  // FIXED: Command Injection Protection
-  // Strict regex for valid IP or hostname to prevent any shell injection characters
-  if (!/^[a-zA-Z0-9\.-]+$/.test(host)) {
-    try { if (sw) sw.reportThreat(req, 'cmd_injection', { input: host }); } catch {}
-    return res.status(400).json({ ok: false, error: 'Invalid hostname format.' });
+  // FIXED: Command Injection Protection (only if sw is active)
+  if (sw) {
+    if (!/^[a-zA-Z0-9\.-]+$/.test(host)) {
+      try { if (sw) sw.reportThreat(req, 'cmd_injection', { input: host }); } catch {}
+      return res.status(400).json({ ok: false, error: 'Invalid hostname format.' });
+    }
   }
 
   const cmd = process.platform === 'win32'
@@ -570,6 +723,18 @@ io.on('connection', (socket) => {
     const rid = parseInt(roomId, 10);
     if (isNaN(rid)) return;
 
+    try {
+      const prepAccess = getPrepare();
+      const access = prepAccess('SELECT permission FROM room_access_control WHERE room_id = ? AND role = ?').get(rid, userObj.role);
+      if (!access || !access.permission?.includes('read')) {
+        socket.emit('error_message', { error: `Access denied to room ${rid}.` });
+        return;
+      }
+    } catch (e) {
+      console.error('[Socket] join_room error:', e.message);
+      return;
+    }
+
     // Leave old room
     const prev = onlineUsers.get(socket.id);
     if (prev && prev.roomId) {
@@ -594,6 +759,18 @@ io.on('connection', (socket) => {
       const rid  = parseInt(roomId, 10);
       const u    = onlineUsers.get(socket.id);
       if (!u) return;
+
+      try {
+        const prepAccess = getPrepare();
+        const access = prepAccess('SELECT permission FROM room_access_control WHERE room_id = ? AND role = ?').get(rid, u.role);
+        if (!access || !access.permission?.includes('write')) {
+          socket.emit('error_message', { error: `Access denied to room ${rid}.` });
+          return;
+        }
+      } catch (e) {
+        console.error('[Socket] chat_message access check error:', e.message);
+        return;
+      }
 
       const prepare2 = getPrepare();
       const result   = prepare2(

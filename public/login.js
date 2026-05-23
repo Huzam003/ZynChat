@@ -286,10 +286,12 @@ const demoToggle = document.getElementById('demoToggle');
 const demoList   = document.getElementById('demoList');
 const demoChevron = document.getElementById('demoChevron');
 
-demoToggle.addEventListener('click', () => {
-  const open = demoList.classList.toggle('open');
-  demoToggle.classList.toggle('open', open);
-});
+if (demoToggle) {
+  demoToggle.addEventListener('click', () => {
+    const open = demoList.classList.toggle('open');
+    demoToggle.classList.toggle('open', open);
+  });
+}
 
 document.querySelectorAll('.demo-item').forEach(item => {
   item.addEventListener('click', () => {
@@ -304,6 +306,17 @@ document.querySelectorAll('.demo-item').forEach(item => {
       setTimeout(() => el.style.borderColor = '', 600);
     });
   });
+});
+
+// Reveal demo accounts on Ctrl+Shift+D
+window.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
+    e.preventDefault();
+    const demoSec = document.querySelector('.demo-section');
+    if (demoSec) {
+      demoSec.style.display = demoSec.style.display === 'none' ? 'block' : 'none';
+    }
+  }
 });
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────

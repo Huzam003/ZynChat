@@ -709,22 +709,7 @@ function showToast(msg, color = 'red') {
   setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 2500);
 }
 
-// ─── Reset button ─────────────────────────────────────────────────────────────
-$('resetBtn').addEventListener('click', async () => {
-  if (!confirm('🚨 CRITICAL: Wipe all ShieldWatch threat data?')) return;
-  try {
-    const res = await fetch('/api/reset', { method: 'POST' });
-    if (res.ok) {
-      showToast('🛡️ All data cleared!', 'green');
-      setTimeout(() => location.reload(), 800);
-    } else {
-      const err = await res.json();
-      showToast('❌ Reset failed: ' + (err.error || 'Unauthorized'), 'red');
-    }
-  } catch (e) {
-    showToast('❌ Network error during reset', 'red');
-  }
-});
+
 
 // ─── Logout handler ───
 const logoutBtn = $('logoutBtn');
@@ -872,6 +857,26 @@ function bindButtons() {
   if (modal) {
     modal.onclick = (e) => {
       if (e.target === modal) closeReportModal();
+    };
+  }
+
+  // ─── Reset button ─────────────────────────────────────────────────────────────
+  const resetBtn = $('resetBtn');
+  if (resetBtn) {
+    resetBtn.onclick = async () => {
+      if (!confirm('🚨 CRITICAL: Wipe all ShieldWatch threat data?')) return;
+      try {
+        const res = await fetch('/api/reset', { method: 'POST' });
+        if (res.ok) {
+          showToast('🛡️ All data cleared!', 'green');
+          setTimeout(() => location.reload(), 800);
+        } else {
+          const err = await res.json();
+          showToast('❌ Reset failed: ' + (err.error || 'Unauthorized'), 'red');
+        }
+      } catch (e) {
+        showToast('❌ Network error during reset', 'red');
+      }
     };
   }
 }

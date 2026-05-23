@@ -21,6 +21,10 @@ const APP_ID    = process.env.SW_APP_ID       || 'zynchat';
 const LOG_ONLY  = process.env.SW_LOG_ONLY === 'true';
 const API_TOKEN = process.env.SW_API_TOKEN || 'sw-internal-token-xyz';
 
+if (process.env.NODE_ENV === 'production' && API_TOKEN === 'sw-internal-token-xyz') {
+  console.error('\n🚨 [ShieldWatch] CRITICAL SECURITY WARNING: The default insecure SW_API_TOKEN is active in a production environment! Please configure a secure token immediately.\n');
+}
+
 // ─── Shared Helpers ──────────────────────────────────────────────────────────
 function extractIP(req) {
   const raw = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1')
@@ -499,6 +503,11 @@ const PATTERNS = {
     /\/proc\/self/i,
     /\/windows\/win\.ini/i,
     /\/boot\.ini/i,
+    /%c0%af/i,
+    /%c1%9c/i,
+    /%c0%2e/i,
+    /%%2e/i,
+    /%u002e/i,
   ],
   cmdInjection: [
     /(?:[;&|`$\s]|^)(?:sudo\s+)?(ls|cat|pwd|id|whoami|uname|curl|wget|bash|sh|python\d*|perl|nc|netcat|ncat|php)\b/i,
@@ -511,14 +520,45 @@ const PATTERNS = {
 // ─── Detect threat ────────────────────────────────────────────────────────────
 function detectThreats(value) {
   if (value == null || typeof value !== 'string') return null;
-  let decoded = value;
-  try { decoded = decodeURIComponent(value); } catch {}
+
+  // 1. ReDoS Mitigation: limit input scanning length
+  const MAX_SCAN_LENGTH = 4096;
+  let rawVal = value;
+  if (value.length > MAX_SCAN_LENGTH) {
+    value = value.slice(0, MAX_SCAN_LENGTH);
+  }
+
+  // 2. Normalization: Recursive URL-decoding (up to 3 times)
+  let normalized = value;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const decoded = decodeURIComponent(normalized);
+      if (decoded === normalized) break;
+      normalized = decoded;
+    } catch {
+      break;
+    }
+  }
+
+  // 3. Normalization: HTML Entity Decoding
+  normalized = normalized
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/')
+    .replace(/&#39;/g, "'")
+    .replace(/&#47;/g, '/')
+    .replace(/&amp;/g, '&');
+
+  // 4. Normalization: SQL Comment Stripping (e.g. SEL/**/ECT)
+  const normalizedNoComments = normalized.replace(/\/\*.*?\*\//g, '');
 
   for (const [type, patterns] of Object.entries(PATTERNS)) {
     for (const re of patterns) {
-      if (re.test(value) || re.test(decoded)) {
+      if (re.test(value) || re.test(normalized) || re.test(normalizedNoComments)) {
         const typeMap = { sqli: 'SQL Injection', xss: 'XSS Attempt', pathTraversal: 'Path Traversal', cmdInjection: 'Command Injection' };
-        return { type, matched: `Shield (App): ${typeMap[type] || type} signature detected`, raw: value.slice(0, 200) };
+        return { type, matched: `Shield (App): ${typeMap[type] || type} signature detected`, raw: rawVal.slice(0, 200) };
       }
     }
   }
@@ -529,33 +569,50 @@ function detectThreats(value) {
 function scanRequest(req) {
   const sensitiveKeys = ['password', 'pass', 'pwd', 'secret', 'token', 'apiKey', 'credential'];
   
+  // Helper to recursively scan any object/array/value
+  function recursiveScan(val, path = '', depth = 0) {
+    if (depth > 10) return null; // Prevent stack overflows
+    if (val == null) return null;
+
+    if (typeof val === 'string') {
+      const t = detectThreats(val);
+      if (t) {
+        const lowerPath = path.toLowerCase();
+        if (sensitiveKeys.some(sk => lowerPath.includes(sk))) {
+          t.raw = '[REDACTED]';
+        }
+        return t;
+      }
+      return null;
+    }
+
+    if (typeof val === 'object') {
+      // Recursively scan keys & values of objects and arrays
+      for (const [k, v] of Object.entries(val)) {
+        const t = recursiveScan(v, path ? `${path}.${k}` : k, depth + 1);
+        if (t) return t;
+      }
+    }
+
+    return null;
+  }
+
   // Scan query params
   if (req.query && Object.keys(req.query).length > 0) {
     console.log(`[ShieldWatch] Scanning query:`, JSON.stringify(req.query));
-    for (const [key, val] of Object.entries(req.query)) {
-      if (typeof val !== 'string') continue;
-      const t = detectThreats(val);
-      if (t) return t;
-    }
+    const t = recursiveScan(req.query);
+    if (t) return t;
   }
 
-  // Scan body (with masking for sensitive fields)
-  for (const [key, val] of Object.entries(req.body || {})) {
-    if (typeof val !== 'string') continue;
-    const t = detectThreats(val);
-    if (t) {
-      const lowerKey = key.toLowerCase();
-      if (sensitiveKeys.some(sk => lowerKey.includes(sk))) {
-        t.raw = '[REDACTED]'; // Hide the actual password/token
-      }
-      return t;
-    }
+  // Scan body (recursively scanning all nested objects)
+  if (req.body && Object.keys(req.body).length > 0) {
+    const t = recursiveScan(req.body);
+    if (t) return t;
   }
 
   // Scan URL params
-  for (const [key, val] of Object.entries(req.params || {})) {
-    if (typeof val !== 'string') continue;
-    const t = detectThreats(val);
+  if (req.params && Object.keys(req.params).length > 0) {
+    const t = recursiveScan(req.params);
     if (t) return t;
   }
   
@@ -926,6 +983,7 @@ module.exports = {
   middleware: httpMiddleware,
   inspectMessage,
   detectThreats,
+  scanRequest,
   submitFingerprint,
   honeypotHit,
   reportThreat,
