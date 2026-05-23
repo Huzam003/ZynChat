@@ -466,6 +466,16 @@ app.get('/api/blocked',          requireApiOrAdmin, (req, res) => res.json(Array
 app.get('/api/blocked-fp',       requireApiOrAdmin, (req, res) => res.json(Array.from(blockedFingerprints)));
 app.get('/api/blocked-sessions', requireApiOrAdmin, (req, res) => res.json(Array.from(blockedSessions)));
 
+app.get('/api/live-status', requireApiOrAdmin, (req, res) => {
+  const all = Array.from(attackers.values());
+  const online = all.filter(a => a.isOnline === true);
+  res.json({
+    online_count: online.length,
+    online_users: online.map(a => ({ session: a.session, threat: a.threatScore || 0 })),
+    total_events: events.length
+  });
+});
+
 // 2. Protected Routes (Admin Dashboard)
 app.use(requireAdmin);
 

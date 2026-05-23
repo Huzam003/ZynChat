@@ -479,7 +479,7 @@ app.post('/api/sw/fingerprint', (req, res) => {
             || req.body?.fingerprint?.deviceId
             || req.body?.fingerprint?.canvas;
 
-  if (!fpId || !/^[a-f0-9]{16,64}$/.test(fpId)) {
+  if (!fpId || !/^[a-f0-9]{8,64}$/.test(fpId)) {
     if (req.session) {
       req.session.fpVerified = false;
     }
