@@ -1,4 +1,4 @@
-[# ZynChat 💬
+# [ZynChat 💬](https://github.com/Un-9oon/ZynChat)
 > Secure Enterprise Messaging Platform & Security Hardening Benchmark
 
 ZynChat is a modern, high-stakes real-time collaboration application designed for secure enterprise messaging. It serves as the official validation benchmark for the **ShieldWatch UADR (Unified Attack Detection & Response)** security appliance. 
@@ -71,4 +71,3 @@ ZynChat includes an automated security testing suite to validate WAF and RASP de
 python3 attacks.py
 ```
 This script launches simulated exploit payloads targeting ZynChat endpoints and prints the response status and telemetry registration results.
-](https://github.com/Un-9oon/ZynChat)
