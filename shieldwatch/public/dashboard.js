@@ -1,6 +1,10 @@
 /* ─── ShieldWatch Dashboard — Real-Time Client ──────────────────────────── */
 
 const socket = io({ path: '/sw.io' });
+const getApiUrl = (endpoint) => {
+  const isDashboard = window.location.pathname.startsWith('/dashboard');
+  return isDashboard ? `/dashboard/api/${endpoint}` : `/api/${endpoint}`;
+};
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let allAttackers    = [];
@@ -98,7 +102,7 @@ function setStatus(online) {
 // ─── Fetch stats from REST ────────────────────────────────────────────────────
 async function fetchStats() {
   try {
-    const r = await fetch('/api/stats');
+    const r = await fetch(getApiUrl('stats'));
     const s = await r.json();
     animateNum('cntTotal',    s.total);
     animateNum('cntBlocked',  s.blocked);
@@ -109,6 +113,13 @@ async function fetchStats() {
     animateNum('statDecoys',  s.decoys);
     animateNum('statLogged',  s.logged);
     renderAttackTypes(s.byType, s.total);
+
+    if (s.appId) {
+      const headerApp = $('headerApp');
+      if (headerApp) headerApp.textContent = s.appId;
+      const monText = $('monitoringText');
+      if (monText) monText.textContent = `Monitoring ${s.appId} — no threats detected`;
+    }
   } catch {}
 }
 
@@ -439,7 +450,7 @@ async function blockCurrentSession() {
   const btn = $('blockSessionBtn');
   if (btn) btn.innerHTML = '✂️ Kicking...';
   try {
-    const res = await fetch('/api/block-session', {
+    const res = await fetch(getApiUrl('block-session'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -462,7 +473,7 @@ async function unblockCurrentSession() {
   const a = allAttackers.find(x => x.session === selectedSession);
   if (!a) return;
   try {
-    const res = await fetch('/api/unblock-session', {
+    const res = await fetch(getApiUrl('unblock-session'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session: a.session })
@@ -486,7 +497,7 @@ async function blockCurrentIP() {
   const btn = $('blockIPBtn');
   if (btn) btn.innerHTML = '⚡ Blocking...';
   try {
-    const res = await fetch('/api/block', {
+    const res = await fetch(getApiUrl('block'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ip: a.ip })
@@ -507,7 +518,7 @@ async function unblockCurrentIP() {
   const a = allAttackers.find(x => x.session === selectedSession);
   if (!a || !a.ip) return;
   try {
-    const res = await fetch('/api/unblock', {
+    const res = await fetch(getApiUrl('unblock'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ip: a.ip })
@@ -532,7 +543,7 @@ async function blockCurrentFP() {
   }
 
   try {
-    const res = await fetch('/api/block-fp', {
+    const res = await fetch(getApiUrl('block-fp'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fpId: a.fpId })
@@ -552,7 +563,7 @@ async function unblockCurrentFP() {
   if (!a || !a.fpId) return;
 
   try {
-    const res = await fetch('/api/unblock-fp', {
+    const res = await fetch(getApiUrl('unblock-fp'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fpId: a.fpId })
@@ -643,7 +654,7 @@ function findAttackerByFP(fp) { return allAttackers.find(a => a.fpId === fp); }
 
 async function unblockFingerprint(fpId) {
   try {
-    const res = await fetch('/api/unblock-fp', {
+    const res = await fetch(getApiUrl('unblock-fp'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fpId })
@@ -662,7 +673,7 @@ async function unblockFingerprint(fpId) {
 
 async function unblockSession(session) {
   try {
-    const res = await fetch('/api/unblock-session', {
+    const res = await fetch(getApiUrl('unblock-session'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session })
@@ -681,7 +692,7 @@ async function unblockSession(session) {
 
 async function unblockIP(ip) {
   try {
-    const res = await fetch('/api/unblock', {
+    const res = await fetch(getApiUrl('unblock'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ip }),
@@ -718,7 +729,7 @@ if (logoutBtn) {
     try {
       logoutBtn.disabled = true;
       logoutBtn.textContent = 'Logging out...';
-      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      const res = await fetch(getApiUrl('auth/logout'), { method: 'POST' });
       if (res.ok) {
         window.location.href = '/login';
       } else {
@@ -866,7 +877,7 @@ function bindButtons() {
     resetBtn.onclick = async () => {
       if (!confirm('🚨 CRITICAL: Wipe all ShieldWatch threat data?')) return;
       try {
-        const res = await fetch('/api/reset', { method: 'POST' });
+        const res = await fetch(getApiUrl('reset'), { method: 'POST' });
         if (res.ok) {
           showToast('🛡️ All data cleared!', 'green');
           setTimeout(() => location.reload(), 800);
@@ -898,7 +909,7 @@ async function openReportModal() {
   `;
   
   try {
-    const res = await fetch('/api/report');
+    const res = await fetch(getApiUrl('report'));
     if (!res.ok) throw new Error('Failed to query node');
     const data = await res.json();
     currentReportData = data;

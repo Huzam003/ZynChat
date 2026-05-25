@@ -16,6 +16,28 @@ const http   = require('http');
 const https  = require('https');
 const crypto = require('crypto');
 
+// ─── Manual .env Loader ──────────────────────────────────────────────────────
+try {
+  const fs = require('fs');
+  const path = require('path');
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf8');
+    envContent.split('\n').forEach(line => {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+        const [key, ...valParts] = trimmed.split('=');
+        const val = valParts.join('=').trim().replace(/^['"]|['"]$/g, '');
+        if (key.trim() && !process.env[key.trim()]) {
+          process.env[key.trim()] = val;
+        }
+      }
+    });
+  }
+} catch (e) {
+  // Fail silently
+}
+
 const RAW_ADDR  = process.env.SW_CEREBRO_ADDR || 'localhost:3002';
 const APP_ID    = process.env.SW_APP_ID       || 'zynchat';
 const LOG_ONLY  = process.env.SW_LOG_ONLY === 'true';
@@ -58,6 +80,24 @@ const COLLECTOR = parseAddr(RAW_ADDR);
 const blockedIPs = new Set();
 const blockedFingerprints = new Set();
 const blockedSessions = new Set();
+
+// --- Automatic Active Session Tracking ---
+const activeSessions = new Map(); // username/sessionKey -> lastSeenTime (ms)
+
+// Periodically clean up stale sessions and sync with collector
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+  for (const [key, lastSeen] of activeSessions.entries()) {
+    if (now - lastSeen > 60_000) { // 1 minute timeout
+      activeSessions.delete(key);
+      changed = true;
+    }
+  }
+  if (changed || activeSessions.size > 0) {
+    syncActiveUsers(Array.from(activeSessions.keys()));
+  }
+}, 5000);
 
 let ioInstance = null;
 function setIO(io) {
@@ -297,8 +337,17 @@ function checkCSRF(req) {
   const referer = req.headers['referer'] || '';
   
   // Detect if Origin or Referer is untrusted or missing
-  // Legitimate requests to the API should come from localhost or zynchat.onrender.com
-  const allowedHosts = ['localhost', '127.0.0.1', 'zynchat.onrender.com'];
+  // Legitimate requests to the API should come from localhost, 127.0.0.1, or SW_ALLOWED_HOSTS env var
+  const allowedHosts = ['localhost', '127.0.0.1'];
+  if (process.env.SW_ALLOWED_HOSTS) {
+    process.env.SW_ALLOWED_HOSTS.split(',').forEach(h => {
+      const trimmed = h.trim().toLowerCase();
+      if (trimmed) allowedHosts.push(trimmed);
+    });
+  } else {
+    // Default legacy fallback
+    allowedHosts.push('zynchat.onrender.com');
+  }
   const getDomain = (urlStr) => {
     try {
       return new URL(urlStr).hostname.toLowerCase();
@@ -684,6 +733,32 @@ function httpMiddleware(req, res, next) {
 
 function _httpMiddlewareInner(req, res, next) {
   const rawPath = (req.path || req.url || '/').split('?')[0];
+
+  // --- Auto-track Active Session (deferred to finish) ---
+  res.on('finish', () => {
+    const sessionKey = req.session?.username || req.user?.username || req.session?.userId;
+    if (sessionKey) {
+      const isNew = !activeSessions.has(sessionKey);
+      activeSessions.set(sessionKey, Date.now());
+      if (isNew) {
+        syncActiveUsers(Array.from(activeSessions.keys()));
+      }
+    }
+  });
+
+  // ─── Intercept Nginx Network Shield Block Reports ────────────────────────────
+  if (rawPath === '/api/security/nginx-block') {
+    const reason = req.query?.reason || 'bot';
+    reportNginxEvent(req, reason);
+    return res.status(reason === 'rate-limit' ? 429 : 403).json({
+      ok: false,
+      blocked: true,
+      error: reason === 'rate-limit' 
+        ? 'Too many requests. Blocked by Nginx Network Shield.' 
+        : 'Access denied. Blocked by Nginx Network Shield.',
+      layer: 'network'
+    });
+  }
 
   // ── IP Blocklist check (highest priority) ────────────────────────────────────
   const reqIP = extractIP(req);

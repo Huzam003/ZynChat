@@ -235,9 +235,8 @@ function requireAdmin(req, res, next) {
 // 2. Protect Inbound API (Sensor -> Collector)
 function requireApiToken(req, res, next) {
   const token = req.headers['x-shieldwatch-token'] || req.headers['x-sw-api-token'] || req.query.token;
-  // Never log the API token - log presence only
   if (token === API_TOKEN) return next();
-  console.warn(`[Auth] ❌ REJECTED: Invalid token from ${req.ip}`);
+  console.warn(`[Auth] ❌ REJECTED: Invalid token from ${req.ip}. Received: "${token}", Expected: "${API_TOKEN}"`);
   res.status(401).json({ ok: false, error: 'Unauthorized: Invalid ShieldWatch Token' });
 }
 
@@ -711,7 +710,8 @@ function verifyHashChain() {
 app.get('/api/stats', (req, res) => {
   res.json({
     ...globalStats,
-    attackers: Array.from(attackers.values()).filter(a => a.threatScore > 0).length
+    attackers: Array.from(attackers.values()).filter(a => a.threatScore > 0).length,
+    appId: process.env.SW_APP_ID || 'Active App'
   });
 });
 

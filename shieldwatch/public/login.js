@@ -30,10 +30,15 @@ function anim() {
 }
 anim();
 
+const getApiUrl = (endpoint) => {
+  const isDashboard = window.location.pathname.startsWith('/dashboard');
+  return isDashboard ? `/dashboard/api/${endpoint}` : `/api/${endpoint}`;
+};
+
 document.getElementById('loginForm').onsubmit = async (e) => {
   e.preventDefault();
   const password = document.getElementById('password').value;
-  const res = await fetch('/api/auth/login', {
+  const res = await fetch(getApiUrl('auth/login'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password })

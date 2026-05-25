@@ -1,62 +1,101 @@
 #!/bin/bash
 
-# ShieldWatch Unified Security Appliance Starter
+# ShieldWatch Standalone Appliance Starter
 # ─────────────────────────────────────────────────────────────────────────────
 
-# 1. Config & Paths
-BASE_DIR="/home/we/.gemini/antigravity/scratch/shieldwatch_uadr/ShieldWatch"
-GATEWAY_CONF="$BASE_DIR/gateway/shieldwatch-gateway.conf"
-LOG_DIR="$BASE_DIR/gateway/logs"
-TEMP_DIR="$BASE_DIR/gateway/temp"
+# Clean base path
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$BASE_DIR"
 
-# 2. Cleanup old processes
-echo "🛑 Shutting down existing ShieldWatch services..."
-pkill -9 -f collector.js
-pkill -9 -f server.js
-fuser -k 3001/tcp 2>/dev/null
-fuser -k 3002/tcp 2>/dev/null
-fuser -k 8080/tcp 2>/dev/null
+TARGET_PORT=${1:-3001}
+GATEWAY_PORT=${2:-8080}
+COLLECTOR_PORT=3002
 
-# 3. Ensure directories exist
-mkdir -p "$LOG_DIR" "$TEMP_DIR"
+# Load collector environment if it exists
+if [ -f "$BASE_DIR/collector/.env" ]; then
+    # Load env variables
+    export $(grep -v '^#' "$BASE_DIR/collector/.env" | xargs)
+    if [ ! -z "$SW_PORT" ]; then
+        COLLECTOR_PORT=$SW_PORT
+    fi
+fi
 
-# 4. Set Environment Variables
-export SW_ADMIN_PASS="shieldwatch-admin-2024"
-export SW_API_TOKEN="sw-internal-token-xyz"
-export SW_SESSION_SECRET="zyn-shield-super-secret"
-export SW_PORT=3002
-export SW_CEREBRO_ADDR="localhost:3002"
-export SW_ENABLED="true"
+echo "🛡️  ShieldWatch Security Appliance Starting..."
+echo "   Target Application Port: $TARGET_PORT"
+echo "   Appliance Dashboard Port: $COLLECTOR_PORT"
+echo "   Gateway Proxy Port:       $GATEWAY_PORT"
 
-echo "🛡️  Starting ShieldWatch Collector..."
-node "$BASE_DIR/collector.js" > "$BASE_DIR/collector.log" 2>&1 &
+# 1. Cleanup old processes
+echo "🛑 Terminating existing services on appliance ports..."
+fuser -k $COLLECTOR_PORT/tcp 2>/dev/null
+fuser -k $GATEWAY_PORT/tcp 2>/dev/null
 
-echo "🌐 Starting ShieldWatch Unified Gateway (Nginx)..."
-nginx -c "$GATEWAY_CONF"
+# 2. Ensure logs and temp directories exist
+mkdir -p "$BASE_DIR/gateway/logs" "$BASE_DIR/gateway/temp"
 
-echo "🧪 Starting ZynChat (Target App) for testing..."
-cd /home/we/.gemini/antigravity/scratch/nexachat/nexachat-main
-node server.js > server.log 2>&1 &
+# 3. Dynamic Nginx Gateway Configuration Compilation
+echo "⚙️  Compiling gateway configuration..."
+TEMPLATE="$BASE_DIR/gateway/shieldwatch-gateway.conf.template"
+CONF="$BASE_DIR/gateway/shieldwatch-gateway.conf"
 
-echo "✅ ShieldWatch Appliance ACTIVE"
-echo "   Management Dashboard: http://localhost:8080/dashboard/"
-echo "   Protected Endpoint:   http://localhost:8080/"
+if [ ! -f "$TEMPLATE" ]; then
+    echo "❌ Error: Nginx configuration template not found at $TEMPLATE"
+    exit 1
+fi
 
-# 5. Public Tunnel (Professional Deployment)
+# Replace placeholders with absolute paths and specified ports
+sed -e "s|{{BASE_DIR}}|$BASE_DIR|g" \
+    -e "s|{{TARGET_PORT}}|$TARGET_PORT|g" \
+    -e "s|{{COLLECTOR_PORT}}|$COLLECTOR_PORT|g" \
+    -e "s|{{GATEWAY_PORT}}|$GATEWAY_PORT|g" \
+    "$TEMPLATE" > "$CONF"
+
+# 4. Start Collector
+echo "🛡️  Starting ShieldWatch C2 Collector..."
+cd "$BASE_DIR/collector"
+if [ ! -d "node_modules" ]; then
+    echo "📦 node_modules not found. Installing collector dependencies..."
+    npm install
+fi
+node collector.js > "$BASE_DIR/collector.log" 2>&1 &
+cd "$BASE_DIR"
+
+# Wait a brief moment for the collector server to start
+sleep 2
+
+# 5. Start Nginx Gateway
+if command -v nginx &> /dev/null; then
+    echo "🌐 Starting ShieldWatch Unified Gateway (Nginx)..."
+    nginx -c "$CONF"
+    if [ $? -eq 0 ]; then
+        echo "✅ Gateway active on http://localhost:$GATEWAY_PORT"
+    else
+        echo "⚠️  Failed to start Nginx. Check logs at $BASE_DIR/gateway/logs/error.log"
+    fi
+else
+    echo "⚠️  Nginx not found on system. Running in Collector-Only mode."
+    echo "   Please direct traffic to your app directly or install Nginx for Network Shield protection."
+fi
+
+# 6. Ngrok Integration
 if command -v ngrok &> /dev/null; then
     echo "🚀 Launching Public Security Tunnel..."
-    pkill ngrok
-    ngrok http 8080 --log=stdout > "$BASE_DIR/gateway/logs/ngrok.log" 2>&1 &
+    pkill ngrok 2>/dev/null
+    ngrok http $GATEWAY_PORT --log=stdout > "$BASE_DIR/gateway/logs/ngrok.log" 2>&1 &
     sleep 3
-    PUBLIC_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+    PUBLIC_URL=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url' 2>/dev/null)
     
-    if [ "$PUBLIC_URL" != "null" ]; then
+    if [ ! -z "$PUBLIC_URL" ] && [ "$PUBLIC_URL" != "null" ]; then
         echo "─────────────────────────────────────────────────────────────────────────────"
         echo "🌍 PUBLIC DEPLOYMENT SUCCESSFUL"
         echo "   Public Dashboard: $PUBLIC_URL/dashboard/"
-        echo "   Public App:      $PUBLIC_URL/"
-    else
-        echo "⚠️  Public tunnel failed to initialize (is ngrok configured?)"
+        echo "   Public App:       $PUBLIC_URL/"
     fi
 fi
+
+echo "─────────────────────────────────────────────────────────────────────────────"
+echo "✅ SHIELDWATCH APPLIANCE ACTIVE"
+echo "   Management Dashboard: http://localhost:$GATEWAY_PORT/dashboard/"
+echo "   Protected Entrypoint: http://localhost:$GATEWAY_PORT/"
+echo "   Collector API Port:   http://localhost:$COLLECTOR_PORT/"
 echo "─────────────────────────────────────────────────────────────────────────────"

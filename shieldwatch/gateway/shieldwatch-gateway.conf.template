@@ -1,8 +1,8 @@
 worker_processes 1;
 
-# Absolute paths for this specific environment
-error_log /home/we/.gemini/antigravity/scratch/nexachat/nexachat-main/nginx/logs/error.log warn;
-pid /home/we/.gemini/antigravity/scratch/nexachat/nexachat-main/nginx/temp/nginx.pid;
+# Absolute paths for this specific environment (compiled dynamically at runtime)
+error_log {{BASE_DIR}}/gateway/logs/error.log warn;
+pid {{BASE_DIR}}/gateway/temp/nginx.pid;
 
 events {
     worker_connections 1024;
@@ -12,28 +12,28 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
-    access_log /home/we/.gemini/antigravity/scratch/nexachat/nexachat-main/nginx/logs/access.log;
+    access_log {{BASE_DIR}}/gateway/logs/access.log;
 
-    client_body_temp_path /home/we/.gemini/antigravity/scratch/nexachat/nexachat-main/nginx/temp/body;
-    proxy_temp_path /home/we/.gemini/antigravity/scratch/nexachat/nexachat-main/nginx/temp/proxy;
-    fastcgi_temp_path /home/we/.gemini/antigravity/scratch/nexachat/nexachat-main/nginx/temp/fastcgi;
-    uwsgi_temp_path /home/we/.gemini/antigravity/scratch/nexachat/nexachat-main/nginx/temp/uwsgi;
-    scgi_temp_path /home/we/.gemini/antigravity/scratch/nexachat/nexachat-main/nginx/temp/scgi;
+    client_body_temp_path {{BASE_DIR}}/gateway/temp/body;
+    proxy_temp_path {{BASE_DIR}}/gateway/temp/proxy;
+    fastcgi_temp_path {{BASE_DIR}}/gateway/temp/fastcgi;
+    uwsgi_temp_path {{BASE_DIR}}/gateway/temp/uwsgi;
+    scgi_temp_path {{BASE_DIR}}/gateway/temp/scgi;
 
     # ─── Security: Rate Limiting ──────────────────────────────────────────────
     limit_req_zone $binary_remote_addr zone=zyn_limit:10m rate=15r/s;
 
     # ─── Upstreams ────────────────────────────────────────────────────────────
-    upstream zynchat_app {
-        server 127.0.0.1:3001; 
+    upstream target_app {
+        server 127.0.0.1:{{TARGET_PORT}}; 
     }
 
     upstream sw_collector {
-        server 127.0.0.1:3002;
+        server 127.0.0.1:{{COLLECTOR_PORT}};
     }
 
     server {
-        listen 8080;
+        listen {{GATEWAY_PORT}};
         server_name localhost;
 
         server_tokens off;
@@ -46,6 +46,7 @@ http {
         add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'self';" always;
 
         # ─── Nginx -> ShieldWatch Reporting ───────────────────────────────────
+        # Note: We pass intercepted network block page redirects back to target app which alerts sensor
         error_page 403 /api/security/nginx-block?reason=bot;
         error_page 429 /api/security/nginx-block?reason=rate-limit;
         proxy_intercept_errors on;
@@ -76,7 +77,7 @@ http {
             proxy_set_header Host $host;
         }
 
-        # ─── Route: ZynChat App ──────────────────────────────────────────────
+        # ─── Route: Target App ──────────────────────────────────────────────
         location / {
             # Bot Blocking
             if ($http_user_agent ~* (sqlmap|nikto|dirbuster|nmap|metasploit)) {
@@ -85,7 +86,7 @@ http {
 
             limit_req zone=zyn_limit burst=20 nodelay;
 
-            proxy_pass http://zynchat_app;
+            proxy_pass http://target_app;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection 'upgrade';
@@ -95,7 +96,7 @@ http {
         }
 
         location /socket.io/ {
-            proxy_pass http://zynchat_app/socket.io/;
+            proxy_pass http://target_app/socket.io/;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection "Upgrade";
@@ -104,7 +105,7 @@ http {
 
         location /api/security/ {
             proxy_intercept_errors off;
-            proxy_pass http://zynchat_app;
+            proxy_pass http://target_app;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
         }
